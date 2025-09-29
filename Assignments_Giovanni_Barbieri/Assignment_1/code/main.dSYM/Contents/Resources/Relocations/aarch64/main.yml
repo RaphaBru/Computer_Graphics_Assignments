@@ -1,0 +1,5 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     '/Users/gio_barbieri/Desktop/assignment 1/code/main'
+relocations:     []
+...
