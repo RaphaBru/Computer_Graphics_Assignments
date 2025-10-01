@@ -13,6 +13,6 @@ Exercise 2: Multiple objects<br>
 Exercise 3: Phong lighting model<br>
 
 **Desired output:**
-![Assignment 1 Desired Output](assignment%201/handout_picture.png)
+![Assignment 1 Desired Output](Original_Code_Backup/Assignment_1/handout_picture.png)
 
 -------
