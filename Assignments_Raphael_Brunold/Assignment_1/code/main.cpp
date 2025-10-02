@@ -35,7 +35,7 @@ public:
 class Object;
 
 /**
- Structure representing the even of hitting an object
+ Structure representing the event of hitting an object
  */
 struct Hit{
     bool hit; ///< Boolean indicating whether there was or there was no intersection with an object
@@ -54,7 +54,7 @@ public:
 	glm::vec3 color; ///< Color of the object
 	Material material; ///< Structure describing the material of the object
 	/** A function computing an intersection, which returns the structure Hit */
-    virtual Hit intersect(Ray ray) = 0;
+    virtual Hit intersect(Ray ray) = 0; // Pure virtual function: Child classes like 'Sphere' must have a function 'intersect' (forced)	
 
 	/** Function that returns the material struct of the object*/
 	Material getMaterial(){
@@ -105,8 +105,57 @@ public:
 		 hit.object = this;
 		 
 		------------------------------------------------- */
+
+		const float eps = 1e-4f; // for float equality check
+
+		glm::vec3 c = center - ray.origin;		// c: vector from the origin to the sphere's center
+		float a = glm::dot(c, ray.direction);	// a: projection of c onto d (scalar product)
+		float c_length = glm::length(c); 		// Length of vector c; same as glm::distance(center, ray.origin)
+		float D = sqrt(c_length * c_length - a * a);	// D: distance from center to the ray (perpendicular)
+
+		// Case 1: No intersection
+		if (D > radius) {
+			return hit;		// return the hit with hit = false (already set above)
+		}
+
+		// Case 2: One intersection
+		else if (fabs(D - radius) <= eps) { // Check if D == radius, safer floating point comparison
+			hit.hit = true;
+			hit.intersection = ray.origin + a * ray.direction;
+			hit.normal = glm::normalize(hit.intersection - center);
+			hit.distance = a;
+			hit.object = this;
+			return hit;
+		}
+
+		// Case 3: Two intersections
+		else {
+			// Compute both intersections
+			float t_1 = a - sqrt(radius * radius - D * D); //t_1 = a - b = a - sqrt(radius^2 - D^2)
+			float t_2 = a + sqrt(radius * radius - D * D); //t_2 = a + b = a + sqrt(radius^2 - D^2)
+
+			// Choose intersection for hit
+			float t;
+			if (t_1 > 0) {
+				t = t_1;	// choose first intersection if it is positive (not behind ray origin)
+			}
+			else if (t_2 > 0) {
+				t = t_2;	// else choose second intersection if it is positive
+			}
+			else {
+				return hit; // both intersections are behind the ray origin, we return the hit as false
+			}
+
+			hit.hit = true;
+			hit.intersection = ray.origin + t * ray.direction;
+			hit.normal = glm::normalize(hit.intersection - center);
+			hit.distance = t;
+			hit.object = this;
+
+			return hit;
+		}
 		
-		return hit;
+		return hit; // should not arrive here, kept for safety
 	}
 };
 
@@ -197,6 +246,8 @@ void sceneDefinition (){
 	Place for your code: additional sphere
 	 
 	------------------------------------------------- */
+
+	objects.push_back(new Sphere(1.0, glm::vec3(1.0, -2.0, 8.0), glm::vec3(0.6, 0.6, 0.9)));
 	
 	
 	/* ------------------Excercise 3--------------------
@@ -238,6 +289,14 @@ int main(int argc, const char * argv[]) {
 	 
 	------------------------------------------------- */
 
+	glm::vec3 origin(0.0, 0.0, 0.0);
+	float Z = 1.0;		// image distance
+
+	float fov_radian = glm::radians(fov);
+	float s = (2 * Z * tan(fov_radian / 2.0)) / width;
+	float X = - (width * s) / 2.0;
+	float Y = (height * s) / 2.0;
+
     for(int i = 0; i < width ; i++)
         for(int j = 0; j < height ; j++){
 
@@ -256,6 +315,12 @@ int main(int argc, const char * argv[]) {
 			
 			//image.setPixel(i, j, trace_ray(ray));
 
+			float dx = X + i * s + 0.5 * s;
+			float dy = Y - j * s - 0.5 * s;
+			float dz = Z;
+			glm::vec3 direction = glm::normalize(glm::vec3(dx, dy, dz));
+			Ray ray(origin, direction);
+			image.setPixel(i, j, trace_ray(ray)); //trace the ray and set the pixel color from the trace's result
         }
 
     t = clock() - t;
