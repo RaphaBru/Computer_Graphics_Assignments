@@ -136,10 +136,10 @@ public:
 
 			// Choose intersection for hit
 			float t;
-			if (t_1 > 0) {
+			if (t_1 > 0.0f) {
 				t = t_1;	// choose first intersection if it is positive (not behind ray origin)
 			}
-			else if (t_2 > 0) {
+			else if (t_2 > 0.0f) {
 				t = t_2;	// else choose second intersection if it is positive
 			}
 			else {
@@ -174,7 +174,8 @@ public:
 };
 
 vector<Light *> lights; ///< A list of lights in the scene
-glm::vec3 ambient_light(0.1,0.1,0.1);
+// glm::vec3 ambient_light(0.1,0.1,0.1);
+glm::vec3 ambient_light(1.0f, 1.0f, 1.0f);
 vector<Object *> objects; ///< A list of all objects in the scene
 
 
@@ -196,6 +197,26 @@ glm::vec3 PhongModel(glm::vec3 point, glm::vec3 normal, glm::vec3 view_direction
 				 
 	 ------------------------------------------------- */
 	
+	for (Light* light : lights) {
+		// Prepare vectors for further calculations
+		glm::vec3 l = glm::normalize(light->position - point); // light; from the point to the light source (normalized)
+		glm::vec3 v(view_direction); // view-direction; from the point to the viewer/camera (input parameter)
+		glm::vec3 r = glm::normalize(glm::reflect(-l, normal)); // reflection of the light vector on the normal vector (careful! expects vector TOWARDS surface, so -l)
+
+		// Diffuse term
+		float cos_phi = glm::max(0.0f, glm::dot(normal, l)); // phi is the angle between the normal and the light; replaced by zero if cos_phi<=0
+		glm::vec3 diffuse_term = material.diffuse * cos_phi * light->color; // phi<=0 replaced by 0
+		color += diffuse_term;
+
+		// Specular term
+		float cos_alpha = glm::max(0.0f, glm::dot(r, v)); // alpha is the angle between the reflection and the view-direction; replaced by zero if cos_alpha<=0
+		glm::vec3 specular_term = material.specular * powf(cos_alpha, material.shininess) * light->color;
+		color += specular_term;
+	}
+
+	glm::vec3 ambient_term = material.ambient * ambient_light;
+	color += ambient_term;
+
 	// The final color has to be clamped so the values do not go beyond 0 and 1.
 	color = glm::clamp(color, glm::vec3(0.0), glm::vec3(1.0));
 	return color;
@@ -227,8 +248,8 @@ glm::vec3 trace_ray(Ray ray){
 		 Use the second line when you implement PhongModel function - Exercise 3
 					 
 		 ------------------------------------------------- */
-		color = closest_hit.object->color;
-		//color = PhongModel(closest_hit.intersection, closest_hit.normal, glm::normalize(-ray.direction), closest_hit.object->getMaterial());
+		// color = closest_hit.object->color;
+		color = PhongModel(closest_hit.intersection, closest_hit.normal, glm::normalize(-ray.direction), closest_hit.object->getMaterial());
 	}else{
 		color = glm::vec3(0.0, 0.0, 0.0);
 	}
@@ -239,7 +260,7 @@ glm::vec3 trace_ray(Ray ray){
  */
 void sceneDefinition (){
 
-	objects.push_back(new Sphere(1.0, glm::vec3(-0,-2,8), glm::vec3(0.6, 0.9, 0.6)));
+	// objects.push_back(new Sphere(1.0, glm::vec3(-0,-2,8), glm::vec3(0.6, 0.9, 0.6)));
 	
 	/* ------------------Excercise 2--------------------
 	 
@@ -247,7 +268,7 @@ void sceneDefinition (){
 	 
 	------------------------------------------------- */
 
-	objects.push_back(new Sphere(1.0, glm::vec3(1.0, -2.0, 8.0), glm::vec3(0.6, 0.6, 0.9)));
+	// objects.push_back(new Sphere(1.0, glm::vec3(1.0, -2.0, 8.0), glm::vec3(0.6, 0.6, 0.9)));
 	
 	
 	/* ------------------Excercise 3--------------------
@@ -269,6 +290,52 @@ void sceneDefinition (){
 	 lights.push_back(new Light(glm::vec3(0, 26, 5), glm::vec3(0.4)));
 	 
 	------------------------------------------------- */
+
+	// Blue sphere
+	Material blue_specular; // material of the blue sphere (see Material.h)
+	blue_specular.ambient = glm::vec3(0.07f, 0.07f, 0.1f);
+	blue_specular.diffuse = glm::vec3(0.7f, 0.7f, 1.0f);
+	blue_specular.specular = glm::vec3(0.6f);
+	blue_specular.shininess = 100.0;
+
+	glm::vec3 blue_center(1.0f, -2.0f, 8.0f);
+	float blue_radius = 1.0;
+	objects.push_back(new Sphere(blue_radius, blue_center, blue_specular));
+
+	// Red sphere
+	Material red_specular;
+	red_specular.ambient = glm::vec3(0.01f, 0.03f, 0.03f);
+	red_specular.diffuse = glm::vec3(1.0f, 0.3f, 0.3f);
+	red_specular.specular = glm::vec3(0.5f);
+	red_specular.shininess = 10.0;
+
+	glm::vec3 red_center(-1.0f, -2.5f, 6.0f);
+	float red_radius = 0.5;
+	objects.push_back(new Sphere(red_radius, red_center, red_specular));
+
+
+	// Green sphere
+	Material green_specular;
+	green_specular.ambient = glm::vec3(0.07f, 0.09f, 0.07f);
+	green_specular.diffuse = glm::vec3(0.7f, 0.9f, 0.7f);
+	green_specular.specular = glm::vec3(0.0f);
+	green_specular.shininess = 0.0;
+
+	glm::vec3 green_center(2.0f, -2.0f, 6.0f);
+	float green_radius = 1.0;
+	objects.push_back(new Sphere(green_radius, green_center, green_specular));
+
+	// Light sources
+	glm::vec3 light_color(0.4f);
+
+	glm::vec3 light_1_position(0.0f, 26.0f, 5.0f);
+	lights.push_back(new Light(light_1_position, light_color));
+
+	glm::vec3 light_2_position(0.0f, 1.0f, 12.0f);
+	lights.push_back(new Light(light_2_position, light_color));
+
+	glm::vec3 light_3_position(0.0f, 5.0f, 1.0f);
+	lights.push_back(new Light(light_3_position, light_color));
 }
 
 int main(int argc, const char * argv[]) {
@@ -289,13 +356,13 @@ int main(int argc, const char * argv[]) {
 	 
 	------------------------------------------------- */
 
-	glm::vec3 origin(0.0, 0.0, 0.0);
-	float Z = 1.0;		// image distance
+	glm::vec3 origin(0.0f, 0.0f, 0.0f);
+	float Z = 1.0f;		// image distance
 
 	float fov_radian = glm::radians(fov);
-	float s = (2 * Z * tan(fov_radian / 2.0)) / width;
-	float X = - (width * s) / 2.0;
-	float Y = (height * s) / 2.0;
+	float s = (2 * Z * tan(fov_radian / 2.0f)) / width;
+	float X = - (width * s) / 2.0f;
+	float Y = (height * s) / 2.0f;
 
     for(int i = 0; i < width ; i++)
         for(int j = 0; j < height ; j++){
