@@ -20,4 +20,13 @@ struct Material{
     float shininess = 0.0;
 };
 
+Material make_box_material(glm::vec3 color) {
+    Material wall_material;
+	wall_material.ambient = color;
+	wall_material.diffuse = color;
+	wall_material.specular = glm::vec3(0.2f);
+	wall_material.shininess = 10.0;
+    return wall_material;
+}
+
 #endif /* Material_h */
