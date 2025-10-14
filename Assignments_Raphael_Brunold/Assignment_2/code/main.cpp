@@ -447,10 +447,10 @@
 		// objects.push_back(new Plane(front_top_right, glm::normalize(behind_top_right - front_top_right), darkgreen_wall)); // behind
 
 		objects.push_back(new Cone(blue_specular));
-		objects.push_back(new Sphere(0.1f, glm::vec3(0.0f, 0.0f, 0.0f), red_specular));
-		objects.push_back(new Sphere(0.1f, glm::vec3(0.0f, 1.0f, 0.0f), red_specular));
-		objects.push_back(new Sphere(0.1f, glm::vec3(1.0f, 1.0f, 0.0f), red_specular));
-		objects.push_back(new Sphere(0.1f, glm::vec3(-1.0f, 1.0f, 0.0f), red_specular));
+		// objects.push_back(new Sphere(0.1f, glm::vec3(0.0f, 0.0f, 0.0f), red_specular));
+		// objects.push_back(new Sphere(0.1f, glm::vec3(0.0f, 1.0f, 0.0f), red_specular));
+		// objects.push_back(new Sphere(0.1f, glm::vec3(1.0f, 1.0f, 0.0f), red_specular));
+		// objects.push_back(new Sphere(0.1f, glm::vec3(-1.0f, 1.0f, 0.0f), red_specular));
 	}
 	glm::vec3 toneMapping(glm::vec3 intensity){
 
