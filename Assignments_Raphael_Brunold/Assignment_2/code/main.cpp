@@ -253,42 +253,76 @@
 			
 			glm::vec3 o = ray.origin;
 			glm::vec3 d = ray.direction;
+
+			// Preparing indices for easier readability. e.g. vector[x] takes the vector's first value, which is x
 			int x = 0;
 			int y = 1;
 			int z = 2;
-			float A = d[x] * d[x] + d[z] * d[z] - d[y] * d[y];
-			float B = 2.0f * (o[x] * d[x] + o[z] * d[z] - o[y] * d[y]);
-			float C = o[x] * o[x] + o[z] * o[z] - o[y] * o[y];
-			float D = B * B - 4 * A * C;
+
+			// ---------------------------------------
+			// Compute the quadratic formula to find t
+			// ---------------------------------------
+			// Implicit form of the cone's surface:
+			// The cone starts at the origin (0,0,0) and is centered around the y-axis, with an opening angle of 90 degrees
+			// radius r = sqrt(x^2 + z^2)
+			// y / r = tan(45 degrees) = 1 --> y = r --> y = sqrt(x^2 + z^2) --> y^2 = x^2 + z^2 --> x^2 + z^2 - y^2 = 0
+			// Insert ray: gamma(t) = o + t*d     o and d have x, y and z components (ox, oy, oz), (dx, dy, dz)
+			// (ox + t*dx)^2 + (oz + t*dz)^2 - (oy + t*dy)^2 = 0
+			// expand and order this term to get the quadratic term (in t):
+			// t^2 * (dx^2 + dz^2 - dy^2) + t * 2*(ox*dx + oz*dz - oy*dy) + (ox^2 + oz^2 -oy^2)
+			float A = d[x] * d[x] + d[z] * d[z] - d[y] * d[y]; 			// A = (dx^2 + dz^2 - dy^2)
+			float B = 2.0f * (o[x] * d[x] + o[z] * d[z] - o[y] * d[y]); // B = 2*(ox*dx + oz*dz - oy*dy)
+			float C = o[x] * o[x] + o[z] * o[z] - o[y] * o[y]; 			// C = (ox^2 + oz^2 -oy^2)
+			float D = B * B - 4 * A * C;	// Discriminant D = B^2 - 4*A*C
+
+			// The discriminant gives information, if the ray hits the open cone's surface
+			// When D is negative, there is no intersection
+			// When D equals zero (numerically: very close to zero), there is one intersection
+			// When D is positive, there are two intersections
+			
+			// Negative D: No intersection with the open surface
 			if (D < 0) {
+				///////
 				return hit;
 			}
 
 			float t;
 
+			// D equals zero: One intersection
 			if (fabs(D) < 1e-6f) {
 				t = - B / (2 * A);
 			}
+			// D is positive: Two intersections
 			else {
 				float t1 = ((-B) - sqrt(D)) / (2 * A);
 				float t2 = ((-B) + sqrt(D)) / (2 * A);
+				// t1 is closer to the viewer, as sqrt(D) is subtracted
 				t = t1;
+				// Check if t1 is negative --> behind the viewer --> no hit --> switch to t2
 				if (t < 0) {
 					t = t2;
 				}
+				// Check if t1 is negative --> behind the viewer --> no hit 
 				if (t < 0) {
 					return hit;
 				}
 			}
+			// Now, the correct t is selected
 
-			glm::vec3 intersection = o + t * d;
-			// Check if the intersection is above the cone's y limit
+			glm::vec3 intersection = o + t * d; // Compute intersection
+			// Check if the intersection is within the cone's y limit 0 <= y <= 1 --> else, no hit
 			if (intersection[y] < 0.0f || intersection[y]> 1.0f) {
 				return hit;
 			}
 
+			// Find normal vector: 
+			// The implicit form of the cone's surface (x^2 + z^2 - y^2 = 0) dictates, that we are on the cone's surface if this function equals zero
+			// The function's gradient (2x, -2y, 2z) shows the direction, in which the function's value increases the most
+			// This means, that the gradient shows the (not yet normalized) direction of the normal vector
+			// Below, we normalize the gradient. Also, we switch the sign because we realized that the normal was in the opposite direction
 			glm::vec3 gradient(2 * intersection[x], -2 * intersection[y], 2 * intersection[z]);
 
+			// Populate the hit structure
 			hit.hit = true;
 			hit.intersection = intersection;
 			hit.normal = -glm::normalize(gradient);
