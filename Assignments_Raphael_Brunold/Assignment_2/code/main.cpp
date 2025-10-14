@@ -259,6 +259,30 @@
 			int y = 1;
 			int z = 2;
 
+			const float eps = 1e-6f;
+
+			// Plane-ray intersection for closed cone
+			// The plane covers the open cone at its end at y=1
+			// We intersect the plane and then check if the intersection is within the radius
+			// If it is, we return the hit, else it is a miss
+			Hit plane_hit = plane->intersect(ray); // Use the plane class's intersect function
+			if (plane_hit.hit == true) {
+				glm::vec3 plane_intersection = plane_hit.intersection;
+				glm::vec3 plane_normal = plane_hit.normal;
+				float distance_to_plane_hit = glm::distance(plane_intersection, o);
+				float distance_to_center = plane_intersection[x] * plane_intersection[x] + plane_intersection[z] * plane_intersection[z]; // Disk's center is at (0, 1, 0)
+				if (distance_to_center <= 1.0f) {
+					plane_hit.hit = true;
+					plane_hit.intersection = plane_intersection;
+					plane_hit.normal = plane_normal;
+					plane_hit.distance = distance_to_plane_hit;
+					plane_hit.object = this;
+				}
+				else {
+					plane_hit.hit = false;
+				}
+			}
+
 			// ---------------------------------------
 			// Compute the quadratic formula to find t
 			// ---------------------------------------
@@ -282,14 +306,18 @@
 			
 			// Negative D: No intersection with the open surface
 			if (D < 0) {
-				///////
-				return hit;
+				if (plane_hit.hit == true) {
+					return plane_hit;
+				}
+				else {
+					return hit;
+				}
 			}
 
 			float t;
 
 			// D equals zero: One intersection
-			if (fabs(D) < 1e-6f) {
+			if (fabs(D) < eps) {
 				t = - B / (2 * A);
 			}
 			// D is positive: Two intersections
@@ -302,17 +330,27 @@
 				if (t < 0) {
 					t = t2;
 				}
-				// Check if t1 is negative --> behind the viewer --> no hit 
+				// Check if t2 is negative --> behind the viewer --> no hit --> both don't hit
 				if (t < 0) {
-					return hit;
+					if (plane_hit.hit == true) {
+						return plane_hit;
+					}
+					else {
+						return hit;
+					}
 				}
 			}
 			// Now, the correct t is selected
 
 			glm::vec3 intersection = o + t * d; // Compute intersection
 			// Check if the intersection is within the cone's y limit 0 <= y <= 1 --> else, no hit
-			if (intersection[y] < 0.0f || intersection[y]> 1.0f) {
-				return hit;
+			if (intersection[y] < 0.0f - eps || intersection[y]> 1.0f + eps) {
+				if (plane_hit.hit == true) {
+					return plane_hit;
+				}
+				else {
+					return hit;
+				}
 			}
 
 			// Find normal vector: 
@@ -322,12 +360,15 @@
 			// Below, we normalize the gradient. Also, we switch the sign because we realized that the normal was in the opposite direction
 			glm::vec3 gradient(2 * intersection[x], -2 * intersection[y], 2 * intersection[z]);
 
-			// Populate the hit structure
 			hit.hit = true;
 			hit.intersection = intersection;
 			hit.normal = -glm::normalize(gradient);
-			hit.distance = glm::distance(ray.origin, hit.intersection);
+			hit.distance = glm::distance(ray.origin, intersection);
 			hit.object = this;
+
+			if (plane_hit.hit == true && plane_hit.distance < hit.distance) {
+				return plane_hit;
+			}
 
 			return hit;
 		}
