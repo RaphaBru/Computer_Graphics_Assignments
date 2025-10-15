@@ -86,6 +86,9 @@
 				
 			*/
 
+			inverseTransformationMatrix = glm::inverse(transformationMatrix); // inverse
+			normalMatrix = glm::transpose(inverseTransformationMatrix); // transpose of the inverse
+
 		}
 	};
 
@@ -250,9 +253,56 @@
 			hit.distance =
 			
 			*/
+
+			// -/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-
+			// Gio please look here :-)
+			//
+			// The assignment later told me to put a disk at the end of the cone to 'close' it.
+			// I did that with a plane intersection (remember, we talked about that the cone class comes with a plane already)
+			// Now it will do an intersection with the plane, then look if the intersection is within the radius of the cone.
+			// At the end, we look at the cone intersection and that plane intersection and choose the Hit, that is closer to the viewer.
+			//
+			// I realized that there may be a problem: In our calculation we get t1 and t2. Then we discard t2 pretty early because t1 must be closer.
+			// But there is a problem: We cut off the cone above y = 1
+			// This means that there are cases, where t1 is on that infinite cone, and we remove it.
+			// But t2 would be on the 'legal' cone, but we discarded it already.
+			// I tried to refactor it, but messed it up, so I reverted to this state.
+			// If you'd like, have a look at it.
+			//
+			// Now comes the interesting stuff: I'm pretty far with understanding the transformations, now.
+			// Basically, it is just as we thought: At the start, we apply the INVERSE TRANSFORMATION Matrix on the ray.
+			// Then we do the normal intersection. The result are the intersection point and the normal.
+			// Then, we transform back: The intersection point with the TRANSFORMATION matrix, and the normal with the normalMatrix.
+			// All three Matrices (inverse, transformation, and normal) are defined in lines 75-90 in the code above.
+			// Also have a look at lines 578-584: This is how we make a cone, build the transformation matrix (there are easy commands in GLM for that)
+			// Then we call the function from lines 75-90 so our cone has the three matrices.
+			//
+			// Very important! Transformations destroy the size of normal vectors. After each transformation, we must normalize them again, apparently.
+			//
+			// What we need to do next:
+			// Change basically the start and the ending of the cone intersection code, right below here. I did some preparations at the start already.
+			// Then find out what kinds of transformations the professor wants. it's some moving and rotating, maybe more?
+			// The two transformations I've prepared (lines 578-584) are just to test, not final.
+			// -/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-
+
+			// Strategy for transformations: 
+			// 1) Apply the inverse transformation on the ray (origin and direction) --> multiply by inverseTransformationMatrix
+			// 2) Compute intersections as usual
+			// 3) Apply transformation on the results: intersection point (transformationMatrix) and normal vector (normalMatrix)
 			
+			// OLD: Remove this after the transformations are implemented
 			glm::vec3 o = ray.origin;
 			glm::vec3 d = ray.direction;
+
+			// NEW: Transform the ray's origin and direction
+			// Note: Going back to vec3 after the transformation, because it is not needed anymore and operations like normalize expect vec3
+			// Direction will need to be normalized, as transformation may impact magnitude
+			// Note: Make sure to use local_ray and not ray for the next steps!
+
+			// glm::vec3 o = glm::vec3(inverseTransformationMatrix * glm::vec4(ray.origin, 1.0f)); // point: homogenous coordinate = 1
+			// glm::vec3 d = glm::normalize(glm::vec3(inverseTransformationMatrix * glm::vec4(ray.direction, 0.0f))); // direction: homogenous coordinate = 0
+			// Ray local_ray(o, d); // Build new ray with the local origin and the local direction
+
 
 			// Preparing indices for easier readability. e.g. vector[x] takes the vector's first value, which is x
 			int x = 0;
@@ -306,6 +356,7 @@
 			
 			// Negative D: No intersection with the open surface
 			if (D < 0) {
+				// if plane disc was hit, use that
 				if (plane_hit.hit == true) {
 					return plane_hit;
 				}
@@ -333,6 +384,7 @@
 				// Check if t2 is negative --> behind the viewer --> no hit --> both don't hit
 				if (t < 0) {
 					if (plane_hit.hit == true) {
+						// if plane disc was hit, use that
 						return plane_hit;
 					}
 					else {
@@ -346,6 +398,7 @@
 			// Check if the intersection is within the cone's y limit 0 <= y <= 1 --> else, no hit
 			if (intersection[y] < 0.0f - eps || intersection[y]> 1.0f + eps) {
 				if (plane_hit.hit == true) {
+					// if plane disc was hit, use that
 					return plane_hit;
 				}
 				else {
@@ -366,10 +419,11 @@
 			hit.distance = glm::distance(ray.origin, intersection);
 			hit.object = this;
 
+			// if the plane disc was hit and that intersection is closer to the viewer, choose that intersection
 			if (plane_hit.hit == true && plane_hit.distance < hit.distance) {
 				return plane_hit;
 			}
-
+			// else (cone intersection was closer), choose the cone intersection
 			return hit;
 		}
 	};
@@ -521,7 +575,13 @@
 		objects.push_back(new Plane(behind_bottom_left, glm::normalize(behind_bottom_right - behind_bottom_left), lightblue_wall)); // left
 		// objects.push_back(new Plane(front_top_right, glm::normalize(behind_top_right - front_top_right), darkgreen_wall)); // behind
 
-		objects.push_back(new Cone(blue_specular));
+		Cone* cone_1 = new Cone(blue_specular); // make new cone
+		// Build matrices for transformations
+		glm::mat4 T_1 = glm::translate(glm::vec3(5.0f, 9.0f, 14.0f)); 		 // translate (move)
+		glm::mat4 R_1 = glm::rotate(glm::radians(180.0f), glm::vec3(1,0,0)); // rotate 180 degrees around x-axis
+		glm::mat4 M_1 = T_1 * R_1; // combine transformations; first rotate, then translate
+		cone_1->setTransformation(M_1); // 
+		objects.push_back(cone_1);
 		// objects.push_back(new Sphere(0.1f, glm::vec3(0.0f, 0.0f, 0.0f), red_specular));
 		// objects.push_back(new Sphere(0.1f, glm::vec3(0.0f, 1.0f, 0.0f), red_specular));
 		// objects.push_back(new Sphere(0.1f, glm::vec3(1.0f, 1.0f, 0.0f), red_specular));
