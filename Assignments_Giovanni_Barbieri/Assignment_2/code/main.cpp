@@ -571,7 +571,13 @@ glm::vec3 PhongModel(glm::vec3 point, glm::vec3 normal, glm::vec3 view_direction
 
 		*/
 
-		color += lights[light_num]->color * (diffuse + specular);
+		// Calculate distance between light and point
+		// Use the distance to compute an attenuation factor
+		// Use the attenuation factor to attenuate the diffuse and specular components of the Phong model
+
+		float dist = glm::length(lights[light_num]->position - point);
+		float attenuation = 1.0f / (1.0f + 0.09f * dist + 0.032f * dist * dist);
+		color += lights[light_num]->color * (diffuse + specular) * attenuation;
 	}
 	color += ambient_light * material.ambient;
 	color = glm::clamp(color, glm::vec3(0.0), glm::vec3(1.0));
@@ -711,6 +717,9 @@ glm::vec3 toneMapping(glm::vec3 intensity)
 
 	*/
 
+	// Reinhard tone mapping and gamma correction (gamma = 2.2)
+	intensity = intensity / (intensity + glm::vec3(1.0f));
+	intensity = glm::pow(intensity, glm::vec3(1.0f / 2.2f));
 	return intensity;
 }
 int main(int argc, const char *argv[])
