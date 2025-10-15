@@ -252,17 +252,16 @@ public:
 	}
 	Hit intersect(Ray ray)
 	{
-
 		Hit hit;
 		hit.hit = false; // set hit as false by default
 
 		/*  ---- Exercise 2 -----
 
-		Implement the ray-cone intersection. Before intersecting the ray with the cone,
-		make sure that you transform the ray into the local coordinate system.
-		Remember about normalizing all the directions after transformations.
+			Implement the ray-cone intersection. Before intersecting the ray with the cone,
+			make sure that you transform the ray into the local coordinate system.
+			Remember about normalizing all the directions after transformations.
 
-		*/
+			*/
 
 		/* If the intersection is found, you have to set all the critical fields in the Hit strucutre
 		Remember that the final information about intersection point, normal vector and distance have to be given
@@ -311,10 +310,11 @@ public:
 		// 1) Apply the inverse transformation on the ray (origin and direction) --> multiply by inverseTransformationMatrix
 		// 2) Compute intersections as usual
 		// 3) Apply transformation on the results: intersection point (transformationMatrix) and normal vector (normalMatrix)
+		// Transform the ray to local coordinates
 
-		// OLD: Remove this after the transformations are implemented
-		glm::vec3 o = ray.origin;
-		glm::vec3 d = ray.direction;
+		glm::vec3 o = glm::vec3(inverseTransformationMatrix * glm::vec4(ray.origin, 1.0f));
+		glm::vec3 d = glm::normalize(glm::vec3(inverseTransformationMatrix * glm::vec4(ray.direction, 0.0f)));
+		Ray local_ray(o, d);
 
 		// NEW: Transform the ray's origin and direction
 		// Note: Going back to vec3 after the transformation, because it is not needed anymore and operations like normalize expect vec3
@@ -336,7 +336,7 @@ public:
 		// The plane covers the open cone at its end at y=1
 		// We intersect the plane and then check if the intersection is within the radius
 		// If it is, we return the hit, else it is a miss
-		Hit plane_hit = plane->intersect(ray); // Use the plane class's intersect function
+		Hit plane_hit = plane->intersect(local_ray); // Use the plane class's intersect function
 		if (plane_hit.hit == true)
 		{
 			glm::vec3 plane_intersection = plane_hit.intersection;
@@ -384,6 +384,10 @@ public:
 			// if plane disc was hit, use that
 			if (plane_hit.hit == true)
 			{
+				// Transform plane_hit to global coordinates before returning
+				plane_hit.intersection = glm::vec3(transformationMatrix * glm::vec4(plane_hit.intersection, 1.0f));
+				plane_hit.normal = glm::normalize(glm::vec3(normalMatrix * glm::vec4(plane_hit.normal, 0.0f)));
+				plane_hit.distance = glm::distance(ray.origin, plane_hit.intersection);
 				return plane_hit;
 			}
 			else
@@ -416,7 +420,10 @@ public:
 			{
 				if (plane_hit.hit == true)
 				{
-					// if plane disc was hit, use that
+					// Transform plane_hit to global coordinates before returning
+					plane_hit.intersection = glm::vec3(transformationMatrix * glm::vec4(plane_hit.intersection, 1.0f));
+					plane_hit.normal = glm::normalize(glm::vec3(normalMatrix * glm::vec4(plane_hit.normal, 0.0f)));
+					plane_hit.distance = glm::distance(ray.origin, plane_hit.intersection);
 					return plane_hit;
 				}
 				else
@@ -442,7 +449,10 @@ public:
 					// both intersections are outside the cone's y limits --> no hit
 					if (plane_hit.hit == true)
 					{
-						// if plane disc was hit, use that
+						// Transform plane_hit to global coordinates before returning
+						plane_hit.intersection = glm::vec3(transformationMatrix * glm::vec4(plane_hit.intersection, 1.0f));
+						plane_hit.normal = glm::normalize(glm::vec3(normalMatrix * glm::vec4(plane_hit.normal, 0.0f)));
+						plane_hit.distance = glm::distance(ray.origin, plane_hit.intersection);
 						return plane_hit;
 					}
 					else
@@ -461,7 +471,10 @@ public:
 		{
 			if (plane_hit.hit == true)
 			{
-				// if plane disc was hit, use that
+				// Transform plane_hit to global coordinates before returning
+				plane_hit.intersection = glm::vec3(transformationMatrix * glm::vec4(plane_hit.intersection, 1.0f));
+				plane_hit.normal = glm::normalize(glm::vec3(normalMatrix * glm::vec4(plane_hit.normal, 0.0f)));
+				plane_hit.distance = glm::distance(ray.origin, plane_hit.intersection);
 				return plane_hit;
 			}
 			else
@@ -476,17 +489,32 @@ public:
 		// This means, that the gradient shows the (not yet normalized) direction of the normal vector
 		// Below, we normalize the gradient. Also, we switch the sign because we realized that the normal was in the opposite direction
 		glm::vec3 gradient(2 * intersection[x], -2 * intersection[y], 2 * intersection[z]);
+		if (glm::dot(gradient, d) > 0)
+			gradient = -gradient; // Make sure normal and ray direction point against each other
 
+		// Set the hit structure's fields
 		hit.hit = true;
 		hit.intersection = intersection;
-		hit.normal = -glm::normalize(gradient);
-		hit.distance = glm::distance(ray.origin, intersection);
+		hit.normal = glm::normalize(gradient);
+		hit.distance = glm::distance(o, intersection);
 		hit.object = this;
 
+		// Transform intersection and normal back to global coordinates
+		hit.intersection = glm::vec3(transformationMatrix * glm::vec4(hit.intersection, 1.0f));
+		hit.normal = glm::normalize(glm::vec3(normalMatrix * glm::vec4(hit.normal, 0.0f)));
+		hit.distance = glm::distance(ray.origin, hit.intersection);
+
 		// if the plane disc was hit and that intersection is closer to the viewer, choose that intersection
-		if (plane_hit.hit == true && plane_hit.distance < hit.distance)
+		if (plane_hit.hit == true)
 		{
-			return plane_hit;
+			// Transform plane_hit to global coordinates before comparing
+			plane_hit.intersection = glm::vec3(transformationMatrix * glm::vec4(plane_hit.intersection, 1.0f));
+			plane_hit.normal = glm::normalize(glm::vec3(normalMatrix * glm::vec4(plane_hit.normal, 0.0f)));
+			plane_hit.distance = glm::distance(ray.origin, plane_hit.intersection);
+			if (plane_hit.distance < hit.distance)
+			{
+				return plane_hit;
+			}
 		}
 		// else (cone intersection was closer), choose the cone intersection
 		return hit;
@@ -610,9 +638,15 @@ void sceneDefinition()
 	blue_specular.specular = glm::vec3(0.6);
 	blue_specular.shininess = 100.0;
 
+	Material yellow_specular;
+	yellow_specular.ambient = glm::vec3(1.0f, 0.85f, 0.1f);
+	yellow_specular.diffuse = glm::vec3(1.0f, 0.85f, 0.1f);
+	yellow_specular.specular = glm::vec3(1.0f);
+	yellow_specular.shininess = 120.0f;
+
 	objects.push_back(new Sphere(1.0, glm::vec3(1, -2, 8), blue_specular));
 	objects.push_back(new Sphere(0.5, glm::vec3(-1, -2.5, 6), red_specular));
-	objects.push_back(new Sphere(1.0, glm::vec3(2, -2, 6), green_diffuse));
+	// objects.push_back(new Sphere(1.0, glm::vec3(2, -2, 6), green_diffuse));
 
 	lights.push_back(new Light(glm::vec3(0, 26, 5), glm::vec3(0.4)));
 	lights.push_back(new Light(glm::vec3(0, 1, 12), glm::vec3(0.4)));
@@ -647,17 +681,26 @@ void sceneDefinition()
 	objects.push_back(new Plane(behind_bottom_left, glm::normalize(behind_bottom_right - behind_bottom_left), lightblue_wall)); // left
 	// objects.push_back(new Plane(front_top_right, glm::normalize(behind_top_right - front_top_right), darkgreen_wall)); // behind
 
-	Cone *cone_1 = new Cone(blue_specular); // make new cone
-	// Build matrices for transformations
-	glm::mat4 T_1 = glm::translate(glm::vec3(5.0f, 9.0f, 14.0f));		   // translate (move)
-	glm::mat4 R_1 = glm::rotate(glm::radians(180.0f), glm::vec3(1, 0, 0)); // rotate 180 degrees around x-axis
-	glm::mat4 M_1 = T_1 * R_1;											   // combine transformations; first rotate, then translate
-	cone_1->setTransformation(M_1);										   //
-	objects.push_back(cone_1);
-	// objects.push_back(new Sphere(0.1f, glm::vec3(0.0f, 0.0f, 0.0f), red_specular));
-	// objects.push_back(new Sphere(0.1f, glm::vec3(0.0f, 1.0f, 0.0f), red_specular));
-	// objects.push_back(new Sphere(0.1f, glm::vec3(1.0f, 1.0f, 0.0f), red_specular));
-	// objects.push_back(new Sphere(0.1f, glm::vec3(-1.0f, 1.0f, 0.0f), red_specular));
+	// Yellow specular cone
+	Cone *cone_yellow = new Cone(yellow_specular);
+	glm::mat4 S_yellow = glm::scale(glm::vec3(3.0f, 12.0f, 3.0f));
+	glm::mat4 R_yellow = glm::rotate(glm::radians(180.0f), glm::vec3(1, 0, 0));
+	glm::mat4 T_yellow = glm::translate(glm::vec3(5.0f, 9.0f, 14.0f));
+	cone_yellow->setTransformation(T_yellow * R_yellow * S_yellow);
+	objects.push_back(cone_yellow);
+
+	// Green diffuse cone
+	Material green_cone;
+	green_cone.ambient = green_diffuse.ambient;
+	green_cone.diffuse = green_diffuse.diffuse;
+	green_cone.specular = green_diffuse.specular;
+	green_cone.shininess = green_diffuse.shininess;
+	Cone *cone_green = new Cone(green_cone);
+	glm::mat4 S_green = glm::scale(glm::vec3(1.0f, 3.0f, 1.0f));
+	glm::mat4 R_green = glm::rotate(glm::radians(70.0f), glm::vec3(0, 0, 1));
+	glm::mat4 T_green = glm::translate(glm::vec3(6.0f, -3.0f, 7.0f));
+	cone_green->setTransformation(T_green * R_green * S_green);
+	objects.push_back(cone_green);
 }
 glm::vec3 toneMapping(glm::vec3 intensity)
 {
