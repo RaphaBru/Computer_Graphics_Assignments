@@ -461,7 +461,7 @@
 	};
 
 	vector<Light *> lights; ///< A list of lights in the scene
-	glm::vec3 ambient_light(0.1,0.1,0.1);
+	glm::vec3 ambient_light(0.05,0.05,0.05);
 	vector<Object *> objects; ///< A list of all objects in the scene
 
 
@@ -554,18 +554,18 @@
 		*/
 
 		Material green_diffuse;
-		green_diffuse.ambient = glm::vec3(0.7f, 0.9f, 0.7f);
-		green_diffuse.diffuse = glm::vec3(0.7f, 0.9f, 0.7f);
+		green_diffuse.ambient = glm::vec3(Colors::Green);
+		green_diffuse.diffuse = glm::vec3(Colors::Green);
 
 		Material red_specular;
-		red_specular.ambient = glm::vec3(1.0f, 0.3f, 0.3f);
-		red_specular.diffuse = glm::vec3(1.0f, 0.3f, 0.3f);
+		red_specular.ambient = glm::vec3(Colors::Red);
+		red_specular.diffuse = glm::vec3(Colors::Red);
 		red_specular.specular = glm::vec3(0.5);
 		red_specular.shininess = 10.0;
 
 		Material blue_specular;
-		blue_specular.ambient = glm::vec3(0.7f, 0.7f, 1.0f);
-		blue_specular.diffuse = glm::vec3(0.7f, 0.7f, 1.0f);
+		blue_specular.ambient = glm::vec3(Colors::Blue);
+		blue_specular.diffuse = glm::vec3(Colors::Blue);
 		blue_specular.specular = glm::vec3(0.6);
 		blue_specular.shininess = 100.0;
 		
@@ -574,9 +574,9 @@
 		objects.push_back(new Sphere(0.5, glm::vec3(-1,-2.5,6), red_specular));
 		// objects.push_back(new Sphere(1.0, glm::vec3(2,-2,6), green_diffuse));
 			
-		lights.push_back(new Light(glm::vec3(0, 26, 5), glm::vec3(0.4)));
-		lights.push_back(new Light(glm::vec3(0, 1, 12), glm::vec3(0.4)));
-		lights.push_back(new Light(glm::vec3(0, 5, 1), glm::vec3(0.4)));
+		lights.push_back(new Light(glm::vec3(0, 26, 5), glm::vec3(0.8)));
+		lights.push_back(new Light(glm::vec3(0, 1, 12), glm::vec3(0.8)));
+		lights.push_back(new Light(glm::vec3(0, 5, 1), glm::vec3(0.8)));
 
 		// --------------------------------------------------------
 		// Exercise 1: Add six planes to the scene to build a "box"
@@ -616,8 +616,8 @@
 		// Yellow cone
 		// Material - requirements: yellow color, highly specular
 		Material yellow_highly_specular;
-		yellow_highly_specular.ambient = glm::vec3(0.9, 0.8, 0.2);
-		yellow_highly_specular.diffuse = glm::vec3(0.9, 0.8, 0.2);
+		yellow_highly_specular.ambient = glm::vec3(Colors::Yellow);
+		yellow_highly_specular.diffuse = glm::vec3(Colors::Yellow);
 		yellow_highly_specular.specular = glm::vec3(1.2);
 		yellow_highly_specular.shininess = 150.0;
 
