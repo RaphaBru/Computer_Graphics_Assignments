@@ -241,6 +241,105 @@ public:
 	}
 };
 
+class Triangle : public Object{
+private:
+	std::array<glm::vec3, 3> vertices;
+	std::array<glm::vec3, 3> vertex_normals;
+	bool has_vertex_normals = false;
+	Plane *plane;
+	
+public:
+	// constructor for flat shading --> no vertex normals provided
+	Triangle(std::array<glm::vec3, 3> vertices, Material material) : vertices(vertices){
+		this->material = material;
+		// construct an infinite plane from the triangle vertices - a plane needs a base point and a normal
+		// use first triangle vertex as base point
+		// compute normal with cross product: (Point2 - Point1) x (Point3 - Point1), normalize result
+		plane = new Plane(vertices[0], glm::normalize(glm::cross((vertices[1] - vertices[0]), (vertices[2] - vertices[0]))));
+	}
+
+	// constructor for smooth shading --> vertex normals provided
+	Triangle(std::array<glm::vec3, 3> vertices, std::array<glm::vec3, 3> vertex_normals, Material material) : vertices(vertices), vertex_normals(vertex_normals), has_vertex_normals(true){
+		this->material = material;
+		plane = new Plane(vertices[0], glm::normalize(glm::cross((vertices[1] - vertices[0]), (vertices[2] - vertices[0]))));
+	}
+	Hit intersect(Ray ray){
+		
+		// setup for transformations: transform ray to local coordinates (same as in Cone class from template)
+		glm::vec3 d = inverseTransformationMatrix * glm::vec4(ray.direction, 0.0); //implicit cast to vec3
+		d = glm::normalize(d);
+		glm::vec3 o = inverseTransformationMatrix * glm::vec4(ray.origin, 1.0); //implicit cast to vec3
+		Ray new_ray(o,d);
+		
+		// compute intersection with infinite plane
+		Hit hit = plane->intersect(new_ray);
+		if (hit.hit == false){
+			return hit;
+		}
+
+		// extract vertices for easier handling
+		glm::vec3 point1 = vertices[0];
+		glm::vec3 point2 = vertices[1];
+		glm::vec3 point3 = vertices[2];
+
+		glm::vec3 intersection = hit.intersection; // intersection point, p
+		glm::vec3 n_plane = glm::cross((point2 - point1), (point3 - point1)); // normal of triangle plane - intentionally not normalized
+
+		// Subtriangle normals: n_i = (p_i+1 - p) x (p_i-1 - p)   (Lecture Slide 16)
+		glm::vec3 n1 = glm::cross((point2 - intersection), (point3 - intersection));
+		glm::vec3 n2 = glm::cross((point3 - intersection), (point1 - intersection));
+		glm::vec3 n3 = glm::cross((point1 - intersection), (point2 - intersection));
+
+		// lambda_i = <n, n_i> / ||n||^2  --> use ||n||^2 = <n, n>
+		float n_magnitude_squared = glm::dot(n_plane, n_plane);
+
+		// check for degenerate triangle
+		if (n_magnitude_squared <= 0.0f){
+			hit.hit = false;
+			return hit;
+		}
+
+		float weight1 = glm::dot(n_plane, n1) / n_magnitude_squared;
+		float weight2 = glm::dot(n_plane, n2) / n_magnitude_squared;
+		float weight3 = glm::dot(n_plane, n3) / n_magnitude_squared;
+
+		// the intersection is inside the triangle if all weights are >= 0
+		// if not (!), return the hit as false
+		if (!(weight1 >= 0 && weight2 >= 0 && weight3 >=0)){
+			hit.hit = false;
+			return hit;
+		}
+
+		// compute normal vector
+		glm::vec3 normal;
+
+		// if vertex normals were provided --> smooth shading
+		if (has_vertex_normals){
+			// normal vector = weighted vertex normals = weight1 * vertex_normal1 + ... + weight3 * vertex_normal3
+			normal = glm::normalize(weight1 * vertex_normals[0] + weight2 * vertex_normals[1] + weight3 * vertex_normals[2]);
+		}
+		// else: flat shading
+		else {
+			// use normalized triangle plane vector
+			normal = glm::normalize(n_plane);
+		}
+
+		// transform intersection and normal back to global coordinates  (same as in Cone class from template)
+		intersection = transformationMatrix * glm::vec4(intersection, 1.0); //implicit cast to vec3
+		normal = normalMatrix * glm::vec4(normal, 0.0); //implicit cast to vec3
+		normal = glm::normalize(normal);
+
+		// populate hit struct
+		hit.hit = true;
+		hit.object = this;
+		hit.intersection = intersection;
+		hit.normal = normal;
+		hit.distance = glm::length(hit.intersection - ray.origin); // original ray (global), not transformed ray (local)
+		
+		return hit;
+	}
+};
+
 /**
  Light class
  */
@@ -400,6 +499,24 @@ void sceneDefinition (){
 	rotationMatrix = glm::rotate(glm::atan(3.0f), glm::vec3(0,0,1));
 	cone2->setTransformation(translationMatrix* rotationMatrix*scalingMatrix);
 	objects.push_back(cone2);
+
+	// testing triangles
+	glm::vec3 point1 (-2.0f, 0.0f, 5.0f);
+	glm::vec3 point2 (2.0f, 0.0f, 5.0f);
+	glm::vec3 point3 (0.0f, 3.0f, 5.0f);
+	std::array<glm::vec3, 3> triangle_points = {point1, point3, point2};
+	Triangle *test_triangle = new Triangle(triangle_points, blue_specular);
+	test_triangle->setTransformation(glm::mat4(1.0f));
+	objects.push_back(test_triangle);
+
+	std::array<glm::vec3, 3> triangle_points2 = {
+		glm::vec3(0.0f, 3.0f, 5.0f),
+		glm::vec3(3.0f, 2.0f, 6.0f),
+		glm::vec3(2.0f, 0.0f, 5.0f)
+	};
+	Triangle *test_triangle2 = new Triangle(triangle_points2, red_specular);
+	test_triangle2->setTransformation(glm::mat4(1.0f));
+	objects.push_back(test_triangle2);
 	
 }
 glm::vec3 toneMapping(glm::vec3 intensity){
