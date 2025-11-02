@@ -34,5 +34,7 @@ Exercise 1: Triangles, OBJ file parsing<br>
 Exercise 2: Smoothing<br>
 Bonus Exercise 3: Design own mesh in Blender and display it<br>
 
-**Final output**
+**Final output**<br>
 ![Assignment 3 Final Output](Assignments_Raphael_Brunold/Assignment_3/result_final.png)
+
+-------
