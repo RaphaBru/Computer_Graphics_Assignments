@@ -131,6 +131,19 @@ public:
 	}
 };
 // Assignment 3: Class for ray triangle intersection
+//
+// General plan:
+// 1) Ray-Plane intersection
+// normal: n = (b-a) x (c-a)
+// plane base point: p0 = a
+// ray distance: t = - <n, o - p0> / <n, d> 
+// 2) Barycentric test via subtriangle areas, as shown in the lecture notes (Slide 16)
+// subtriangle normals: n_i = (p_i+1 - p) x (p_i-1 - p)
+// barycentric weights: lambda_i = <n, n_i> / ||n||^2  --> use ||n||^2 = <n, n>
+// if all three weights are >= 0 --> intersection is inside triangle
+// 3) Return intersection and normal
+// 3.1) if no vertex normals are provided: flat shading --> return triangle plane's normal (normalized)
+// 3.2) if vertex normals are provided: smooth shading --> normal = normalize(weight1 * normal_vertex_1 + weight2 * normal_vertex_2 + weight3 * normal_vertex_3)
 class Triangle : public Object
 {
 private:
@@ -139,7 +152,7 @@ private:
 	bool has_vertex_normals = false;
 
 public:
-	// Flat shading
+	// constructor for flat shading --> no vertex normals provided
 	Triangle(std::array<glm::vec3, 3> v, Material material) : vertices(v)
 	{
 		this->material = material;
@@ -147,7 +160,7 @@ public:
 		setTransformation(glm::mat4(1.0f));
 	}
 
-	// Smooth shading (per-vertex normals)
+	// constructor for smooth shading --> vertex normals provided
 	Triangle(std::array<glm::vec3, 3> v, std::array<glm::vec3, 3> vn, Material material)
 		: vertices(v), vertex_normals(vn), has_vertex_normals(true)
 	{
@@ -157,8 +170,8 @@ public:
 
 	Hit intersect(Ray ray) override
 	{
-		// ray and triangle are in the SAME (mesh-local) space.
-		// Ray-plane intersection: n = (b-a) x (c-a)
+		// ray and triangle are in the SAME (mesh-local) space. we handle transformations in the mesh, so all triangles are transformed
+		// 1) Ray-plane intersection: n = (b-a) x (c-a)
 		const glm::vec3 &a = vertices[0];
 		const glm::vec3 &b = vertices[1];
 		const glm::vec3 &c = vertices[2];
@@ -184,7 +197,7 @@ public:
 
 		glm::vec3 p = ray.origin + t * ray.direction; // intersection point on plane
 
-		// Barycentric test via subtriangle areas (using cross products)
+		// 2) Barycentric test via subtriangle areas (using cross products)
 		glm::vec3 n1 = glm::cross(b - p, c - p);
 		glm::vec3 n2 = glm::cross(c - p, a - p);
 		glm::vec3 n3 = glm::cross(a - p, b - p);
@@ -197,13 +210,17 @@ public:
 		if (w1 < 0.0f || w2 < 0.0f || w3 < 0.0f)
 			return out;
 
+		// 3) Normal depends on flat vs smooth shading
 		glm::vec3 normal;
+		// if vertex normals were provided --> smooth shading
 		if (has_vertex_normals)
 		{
 			normal = glm::normalize(w1 * vertex_normals[0] + w2 * vertex_normals[1] + w3 * vertex_normals[2]);
 		}
+		// else: flat shading
 		else
 		{
+			// use normalized triangle plane vector
 			normal = glm::normalize(n);
 		}
 
@@ -218,9 +235,11 @@ public:
 	}
 };
 
-/**
- Class representing a mesh object made up of triangles
- */
+// Assignment 3: Class representing a mesh object made up of triangles
+// 1) loadOBJ: Parse OBJ file to extract vertices, triangles and normals
+// 2) buildTriangles: build triangles for each parsed triangle
+// 3) Hit intersect: transform ray to local coordinates, intersect with each triangle, re-transform the resulting hit
+// With this set-up, we ensure that transformations are applied to all triangles of the mesh
 class Mesh : public Object
 {
 public:
@@ -358,7 +377,7 @@ public:
 		// move parsed data into member storage
 		vertices = std::move(posnTmp);
 		normals = std::move(nrmTmp);
-		// create Triangle objects now (identity transform; you can set a real one later)
+		// create Triangle objects now (identity transform; we can set a real one later)
 		buildTriangles(m, glm::mat4(1.0f));
 		// we must close the file when we are done
 		in.close();
@@ -366,7 +385,7 @@ public:
 
 	Hit intersect(Ray ray) override
 	{
-		// 1) World → Mesh-local
+		// 1) World --> Mesh-local
 		glm::vec3 oL = glm::vec3(inverseTransformationMatrix * glm::vec4(ray.origin, 1.0f));
 		glm::vec3 dL = glm::normalize(glm::vec3(inverseTransformationMatrix * glm::vec4(ray.direction, 0.0f)));
 		Ray rLocal(oL, dL);
@@ -386,7 +405,7 @@ public:
 		if (!best.hit)
 			return best;
 
-		// 3) Mesh-local → World (for the chosen hit only)
+		// 3) Mesh-local --> World (for the chosen hit only)
 		glm::vec3 pW = glm::vec3(transformationMatrix * glm::vec4(best.intersection, 1.0f));
 		glm::vec3 nW = glm::normalize(glm::vec3(normalMatrix * glm::vec4(best.normal, 0.0f)));
 
@@ -710,7 +729,7 @@ void sceneDefinition()
 	// objects.push_back(new Sphere(1.0, glm::vec3(1, -2, 8), blue_specular));
 	// objects.push_back(new Sphere(0.5, glm::vec3(-1, -2.5, 6), red_specular));
 
-	// meshes
+	// Assignment 3: meshes
 	auto *armadillo = new Mesh("meshes/armadillo_with_normals.obj", green_diffuse);
 
 	glm::mat4 S = glm::scale(glm::vec3(1.5f));
@@ -741,7 +760,7 @@ void sceneDefinition()
 	auto *selfmade_cat = new Mesh("meshes/low_poly_cat_smooth.obj", red_specular);
 	S = glm::scale(glm::vec3(0.8f));
 	R = glm::rotate(glm::radians(-45.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-	T = glm::translate(glm::vec3(0.0f, -3.0f, 7.0f));
+	T = glm::translate(glm::vec3(-0.5f, -1.5f, 4.5f));
 	selfmade_cat->setTransformation(T * R * S);
 	objects.push_back(selfmade_cat);
 
@@ -797,8 +816,8 @@ int main(int argc, const char *argv[])
 
 	clock_t t = clock(); // variable for keeping the time of the rendering
 
-	int width = 200;  // width of the image, actual width is 1024 pixels, we put 200 for testing
-	int height = 150; // height of the image, actual height is 768 pixels, we put 150 for testing
+	int width = 600;  // width of the image, actual width is 1024 pixels, we put 200 for testing, then 600 for the submission (ca. 5 minutes rendering time)
+	int height = 450; // height of the image, actual height is 768 pixels, we put 150 for testing, then 450 for the submission
 	float fov = 90;	  // field of view
 
 	sceneDefinition(); // Let's define a scene
