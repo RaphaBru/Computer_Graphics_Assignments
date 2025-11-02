@@ -314,14 +314,12 @@ public:
 				if (a.empty() || b.empty() || c.empty())
 					continue;
 
-				auto split = splitBySlash; // alias
-
 				auto parseTriplet = [&](const std::string &tok, int &vi, int &vti, int &vni)
 				{
-					auto parts = split(tok);
+					auto parts = splitBySlash(tok);
 					// OBJ indices are 1-based; we’ll store 0-based later
 					vi = parts.size() >= 1 && !parts[0].empty() ? parseInt(parts[0]) : 0;
-					vti = parts.size() >= 2 && !parts[1].empty() ? parseInt(parts[1]) : 0; // unused
+					vti = parts.size() >= 2 && !parts[1].empty() ? parseInt(parts[1]) : 0;
 					vni = parts.size() >= 3 && !parts[2].empty() ? parseInt(parts[2]) : 0;
 				};
 
@@ -715,30 +713,27 @@ void sceneDefinition()
 	// meshes
 	auto *armadillo = new Mesh("meshes/armadillo_with_normals.obj", green_diffuse);
 
-	// Try a scale+translate so it sits on the floor plane and in front of camera
-	glm::mat4 S = glm::scale(glm::vec3(1.5f));					  // adjust to taste
-	glm::mat4 R = glm::mat4(1.0f);								  // (optional rotation)
-	glm::mat4 T = glm::translate(glm::vec3(-5.0f, -3.0f, 10.0f)); // forward & down onto plane
+	glm::mat4 S = glm::scale(glm::vec3(1.5f));
+	glm::mat4 R = glm::mat4(1.0f);
+	glm::mat4 T = glm::translate(glm::vec3(-5.0f, -3.0f, 10.0f));
 	armadillo->setTransformation(T * R * S);
 
 	objects.push_back(armadillo);
 
 	auto *bunny = new Mesh("meshes/bunny_with_normals.obj", green_diffuse);
 
-	// Try a scale+translate so it sits on the floor plane and in front of camera
-	S = glm::scale(glm::vec3(1.5f));				   // adjust to taste
-	R = glm::mat4(1.0f);							   // (optional rotation)
-	T = glm::translate(glm::vec3(0.0f, -3.0f, 10.0f)); // forward & down onto plane
+	S = glm::scale(glm::vec3(1.5f));
+	R = glm::mat4(1.0f);
+	T = glm::translate(glm::vec3(0.0f, -3.0f, 10.0f));
 	bunny->setTransformation(T * R * S);
 
 	objects.push_back(bunny);
 
 	auto *lucy = new Mesh("meshes/lucy_with_normals.obj", green_diffuse);
 
-	// Try a scale+translate so it sits on the floor plane and in front of camera
-	S = glm::scale(glm::vec3(1.5f));				   // adjust to taste
-	R = glm::mat4(1.0f);							   // (optional rotation)
-	T = glm::translate(glm::vec3(5.0f, -3.0f, 10.0f)); // forward & down onto plane
+	S = glm::scale(glm::vec3(1.5f));
+	R = glm::mat4(1.0f);
+	T = glm::translate(glm::vec3(5.0f, -3.0f, 10.0f));
 	lucy->setTransformation(T * R * S);
 
 	objects.push_back(lucy);
