@@ -241,6 +241,7 @@ public:
 	}
 };
 
+// Assignment 3: Class for ray triangle intersection
 class Triangle : public Object{
 private:
 	std::array<glm::vec3, 3> vertices;
@@ -338,6 +339,119 @@ public:
 		
 		return hit;
 	}
+};
+
+// Assignment 3: class that prepares mesh from OBJ file and creates triangles
+class Mesh : public Object {
+public:
+    std::vector<Triangle*> triangles;  // pointers to all triangles of the mesh
+    std::vector<glm::vec3> vertices;   // vertices from v lines
+    std::vector<glm::vec3> normals;    // normals from vn lines (if provided)
+    std::vector<std::array<int, 3>> faces; // triangles from f lines
+    std::vector<std::array<int, 3>> normalIndices; // indices of the three vertex normals of a triangle
+    bool hasNormals = false; // true if vertex normals are provided, else false
+
+    // Constructor that loads and builds triangles
+    Mesh(std::string filename, Material material, const glm::mat4& transformation_matrix) {
+        loadOBJ(filename); // loads and parses the OBJ file, prepares triangle data
+        buildTriangles(material, transformation_matrix); // builds a Triangle object for each extracted mesh triangle
+    }
+
+	// dummy intersection: Mesh itself is not hittable, only its triangles are
+    Hit intersect(Ray /*ray*/) override {
+        Hit hit;
+        hit.hit = false;
+        return hit;
+    }
+
+private:
+    void loadOBJ(const std::string& filepath)
+	{
+		// Gio's parsing right here, please.
+		//
+		// All updates and infos from the night owl follow here :-)
+		// The triangle stuff works very well now, the tests work perfectly
+		// See the result_triangles.ppm file in this directory
+		//
+		// Important for compatibility: There are two constructors, they are overloaded so the correct one is always chosen.
+		// Constructor 1: we provide only one array with the three triangle vertices and also provide a material (user chooses that when calling)
+		// Constructor 2: we also provide an array with the three vertex_normals
+		// When you parse, please set the bool hasNormals to true or false, my stuff will handle the rest in buildTriangles below here
+		//
+		// This here is my updated version of the Mesh class
+		// I already built the initial constructor above
+		// I also built the buildTriangles fucntion below. That one goes over the data you prepare here and makes the triangles
+		// So when this class is called, it automatically opens the file, parses it and builds all triangles.
+		// See below in the scene description, where i have already prepared how we will call the Mesh class (lines 630 - 633)
+		//
+		// I wanted to keep your original structure but it clashed somehow with my stuff, no idea why sorry
+		// Is it possible that you fit the parser to this structure here?
+		// If you look at lines 346 - 358 you can see the structure that would be optimal.
+		// I gave your implementation to Mr. Chat and he was mostly happy but then critiqued some stuff, but I did not understand to be honest
+		//
+		// Please be careful of this:
+		// when parsing the normal vectors, please normalize them directly (they are not guaranteed to be normalized in the OBJ file)
+		// my code is currently assuming zero-based indexing and the file does one-based indexing.
+		// parse order: handle "vn " before "v " (since "vn " starts with "v ")
+		//
+		// I think we are very very close to completing all, sorry if my notes are too unorganized.
+		// I will be online at around 11:50 a.m. to discuss things.
+		// please don't worry too much if my stuff makes no sense
+		// sorry if I messed up the things you already did!!! that was not my intention
+		//
+		// maybe an easy starting point would be to give my structure to Mr. Chat so that he can provide an overview :-)
+		//
+		// oh and I think I missed to include imports at the top for the parsing, probably
+
+	}
+
+    // builds triangle objects from the parsed vertex and face data
+    void buildTriangles(Material material, const glm::mat4& transformation_matrix)
+    {
+        // clear previous triangles (if any) and pre-allocate space for all faces
+        triangles.clear();
+        triangles.reserve(faces.size());
+
+        // loop over all faces
+        for (size_t i = 0; i < faces.size(); ++i)
+        {
+            // get the vertex indices for this face (assumed 0-based)
+            const auto& face = faces[i];
+
+            // gather the three vertex positions for this triangle
+            std::array<glm::vec3, 3> triangle_vertices = {
+                vertices[face[0]],
+                vertices[face[1]],
+                vertices[face[2]]
+            };
+
+            Triangle* new_triangle = nullptr; // initialize Triangle outside if/else
+
+            // if vertex normals are provided --> smooth shading
+            if (hasNormals)
+            {
+                const auto& normal_index = normalIndices[i];
+                std::array<glm::vec3, 3> triangle_vertex_normals = {
+                    normals[normal_index[0]],
+                    normals[normal_index[1]],
+                    normals[normal_index[2]]
+                };
+                new_triangle = new Triangle(triangle_vertices, triangle_vertex_normals, material);
+            }
+
+            // else --> flat shading
+            else
+            {
+                new_triangle = new Triangle(triangle_vertices, material);
+            }
+
+            // apply the same transformation matrix to all triangles of this mesh
+            new_triangle->setTransformation(transformation_matrix);
+
+            // store pointer to triangle
+            triangles.push_back(new_triangle);
+        }
+    }
 };
 
 /**
@@ -477,8 +591,6 @@ void sceneDefinition (){
     objects.push_back(new Plane(glm::vec3(0,27,0), glm::vec3(0.0,-1,0)));
     objects.push_back(new Plane(glm::vec3(0,1,-0.01), glm::vec3(0.0,0.0,1.0), green_diffuse));
 	
-	
-	
 	// Cones
 	Material yellow_specular;
 	yellow_specular.ambient = glm::vec3(0.1f, 0.10f, 0.0f);
@@ -501,22 +613,28 @@ void sceneDefinition (){
 	objects.push_back(cone2);
 
 	// testing triangles
-	glm::vec3 point1 (-2.0f, 0.0f, 5.0f);
-	glm::vec3 point2 (2.0f, 0.0f, 5.0f);
-	glm::vec3 point3 (0.0f, 3.0f, 5.0f);
-	std::array<glm::vec3, 3> triangle_points = {point1, point3, point2};
-	Triangle *test_triangle = new Triangle(triangle_points, blue_specular);
-	test_triangle->setTransformation(glm::mat4(1.0f));
-	objects.push_back(test_triangle);
+	// std::array<glm::vec3, 3> triangle_points = {
+	// 	glm::vec3(-2.0f, 0.0f, 5.0f),
+	// 	glm::vec3(0.0f, 3.0f, 5.0f),
+	// 	glm::vec3(2.0f, 0.0f, 5.0f)
+	// };
+	// Triangle *test_triangle = new Triangle(triangle_points, blue_specular);
+	// test_triangle->setTransformation(glm::mat4(1.0f));
+	// objects.push_back(test_triangle);
 
-	std::array<glm::vec3, 3> triangle_points2 = {
-		glm::vec3(0.0f, 3.0f, 5.0f),
-		glm::vec3(3.0f, 2.0f, 6.0f),
-		glm::vec3(2.0f, 0.0f, 5.0f)
-	};
-	Triangle *test_triangle2 = new Triangle(triangle_points2, red_specular);
-	test_triangle2->setTransformation(glm::mat4(1.0f));
-	objects.push_back(test_triangle2);
+	// std::array<glm::vec3, 3> triangle_points2 = {
+	// 	glm::vec3(0.0f, 3.0f, 5.0f),
+	// 	glm::vec3(3.0f, 2.0f, 6.0f),
+	// 	glm::vec3(2.0f, 0.0f, 5.0f)
+	// };
+	// Triangle *test_triangle2 = new Triangle(triangle_points2, red_specular);
+	// test_triangle2->setTransformation(glm::mat4(1.0f));
+	// objects.push_back(test_triangle2);
+
+	// Load a mesh and create triangles
+	Mesh* mesh = new Mesh("models/armadillo.obj", yellow_specular, glm::mat4(1.0f));
+	// Add all triangles from the mesh to the list of objects that are rendered
+	objects.insert(objects.end(), mesh->triangles.begin(), mesh->triangles.end());
 	
 }
 glm::vec3 toneMapping(glm::vec3 intensity){
