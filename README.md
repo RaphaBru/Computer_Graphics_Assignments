@@ -27,3 +27,12 @@ Exercise 3: Improved lighting<br>
 ![Assignment 2 Desired Output](Original_Code_Backup/Assignment_2/handout_picture.png)
 
 -------
+
+## Assignment 3
+**Meshes**<br>
+Exercise 1: Triangles, OBJ file parsing<br>
+Exercise 2: Smoothing<br>
+Bonus Exercise 3: Design own mesh in Blender and display it<br>
+
+**Final output**
+![Assignment 3 Final Output](Assignments_Raphael_Brunold/Assignment_3/result_final.png)
