@@ -606,6 +606,9 @@ vector<Light *> lights; ///< A list of lights in the scene
 glm::vec3 ambient_light(0.001, 0.001, 0.001);
 vector<Object *> objects; ///< A list of all objects in the scene
 
+static const float EPSILON = 1e-4f; // offset to avoid self-intersection acne
+static const int MAX_DEPTH = 1;		// recursion limit for reflections
+
 /** Function for computing color of an object according to the Phong Model
  @param point A point belonging to the object for which the color is computer
  @param normal A normal vector the the point
@@ -614,28 +617,58 @@ vector<Object *> objects; ///< A list of all objects in the scene
 */
 glm::vec3 PhongModel(glm::vec3 point, glm::vec3 normal, glm::vec3 view_direction, Material material)
 {
+	glm::vec3 color(0.0f);
 
-	glm::vec3 color(0.0);
-	for (int light_num = 0; light_num < lights.size(); light_num++)
+	// for each light source
+	for (int light_num = 0; light_num < (int)lights.size(); ++light_num)
 	{
+		// Direction to light
+		glm::vec3 Lvec = lights[light_num]->position - point; // vector from point to light
+		float Ldist = glm::length(Lvec);					  // distance to light
+		if (Ldist <= 0.0f)									  // if distance is zero or negative, skip this light
+			continue;
+		glm::vec3 L = Lvec / Ldist; // L is the normalized direction to light
 
-		glm::vec3 light_direction = glm::normalize(lights[light_num]->position - point);
-		glm::vec3 reflected_direction = glm::reflect(-light_direction, normal);
+		// Shadow test: cast a ray towards the light
+		bool inShadow = false;
+		{
+			// Create shadow ray with origin slightly offset along normal to avoid self-intersection
+			Ray shadowRay(point + normal * EPSILON, L);
 
-		float NdotL = glm::clamp(glm::dot(normal, light_direction), 0.0f, 1.0f);
-		float VdotR = glm::clamp(glm::dot(view_direction, reflected_direction), 0.0f, 1.0f);
+			// for each object, check if it intersects the shadow ray before it reaches the light
+			// if so, the point is in shadow
+			for (int k = 0; k < (int)objects.size(); ++k)
+			{
+				Hit h = objects[k]->intersect(shadowRay);
+				if (h.hit && h.distance > 0.0f && h.distance < Ldist - EPSILON)
+				{
+					inShadow = true;
+					break;
+				}
+			}
+		}
+		// if the point is in shadow, skip this light’s contribution
+		if (inShadow)
+			continue;
 
-		glm::vec3 diffuse_color = material.diffuse;
-		glm::vec3 diffuse = diffuse_color * glm::vec3(NdotL);
-		glm::vec3 specular = material.specular * glm::vec3(pow(VdotR, material.shininess));
+		// Phong terms
+		glm::vec3 lightDir = L;
+		glm::vec3 reflectDir = glm::reflect(-lightDir, normal); // direction of perfect reflection
 
-		float r = glm::distance(point, lights[light_num]->position);
-		r = max(r, 0.1f);
-		color += lights[light_num]->color * (diffuse + specular) / r / r;
+		float NdotL = glm::clamp(glm::dot(normal, lightDir), 0.0f, 1.0f);			// cosine of angle between normal and light direction
+		float VdotR = glm::clamp(glm::dot(view_direction, reflectDir), 0.0f, 1.0f); // cosine of angle between view direction and reflection direction
+
+		glm::vec3 diffuse = material.diffuse * NdotL;
+		glm::vec3 specular = material.specular * powf(VdotR, material.shininess);
+
+		// simple distance attenuation like you had (1/r^2)
+		float r = glm::max(Ldist, 0.1f);
+		color += lights[light_num]->color * (diffuse + specular) / (r * r);
 	}
+
+	// finally we add ambient term
 	color += ambient_light * material.ambient;
-	color = glm::clamp(color, glm::vec3(0.0), glm::vec3(1.0));
-	return color;
+	return glm::clamp(color, glm::vec3(0.0f), glm::vec3(1.0f)); // we return the color clamped between 0 and 1
 }
 
 /**
@@ -643,31 +676,53 @@ glm::vec3 PhongModel(glm::vec3 point, glm::vec3 normal, glm::vec3 view_direction
  @param ray Ray that should be traced through the scene
  @return Color at the intersection point
  */
-glm::vec3 trace_ray(Ray ray)
+glm::vec3 trace_ray(const Ray &ray, int depth = 0)
 {
-
 	Hit closest_hit;
-
 	closest_hit.hit = false;
 	closest_hit.distance = INFINITY;
 
-	for (int k = 0; k < objects.size(); k++)
+	// Find nearest hit
+	for (int k = 0; k < (int)objects.size(); ++k)
 	{
 		Hit hit = objects[k]->intersect(ray);
-		if (hit.hit == true && hit.distance < closest_hit.distance)
+		if (hit.hit && hit.distance < closest_hit.distance)
+		{
 			closest_hit = hit;
+		}
 	}
 
-	glm::vec3 color(0.0);
-	if (closest_hit.hit)
+	// Miss therefore in the background
+	if (!closest_hit.hit)
 	{
-		color = PhongModel(closest_hit.intersection, closest_hit.normal, glm::normalize(-ray.direction), closest_hit.object->getMaterial());
+		return glm::vec3(0.0f);
 	}
-	else
+
+	// Local shading
+	const Material mat = closest_hit.object->getMaterial();
+	glm::vec3 viewDir = glm::normalize(-ray.direction);
+	glm::vec3 local = PhongModel(
+		closest_hit.intersection,
+		closest_hit.normal,
+		viewDir,
+		mat);
+
+	// Stop if max depth or non-reflective
+	float kr = glm::clamp(mat.reflectivity, 0.0f, 1.0f);
+	if (kr <= 0.0f || depth >= MAX_DEPTH)
 	{
-		color = glm::vec3(0.0, 0.0, 0.0);
+		return local;
 	}
-	return color;
+
+	// Perfect mirror reflection
+	glm::vec3 Rdir = glm::normalize(glm::reflect(ray.direction, closest_hit.normal));
+	// Create reflected ray with origin slightly offset along normal to avoid self-intersection
+	Ray reflRay(closest_hit.intersection + closest_hit.normal * EPSILON, Rdir);
+	// we trace the reflected ray recursively
+	glm::vec3 reflCol = trace_ray(reflRay, depth + 1);
+
+	// Mix reflection with local color because of reflectivity
+	return (1.0f - kr) * local + kr * reflCol;
 }
 /**
  Function defining the scene
@@ -690,6 +745,7 @@ void sceneDefinition()
 	blue_specular.diffuse = glm::vec3(0.7f, 0.7f, 1.0f);
 	blue_specular.specular = glm::vec3(0.6);
 	blue_specular.shininess = 100.0;
+	blue_specular.reflectivity = 0.75f;
 
 	// Material green_diffuse;
 	green_diffuse.ambient = glm::vec3(0.03f, 0.1f, 0.03f);
@@ -700,6 +756,7 @@ void sceneDefinition()
 	red_specular.ambient = glm::vec3(0.01f, 0.02f, 0.02f);
 	red_specular.specular = glm::vec3(0.5);
 	red_specular.shininess = 10.0;
+	red_specular.reflectivity = 0.5f;
 
 	// Material blue_specular;
 	blue_specular.ambient = glm::vec3(0.02f, 0.02f, 0.1f);
@@ -707,42 +764,43 @@ void sceneDefinition()
 	blue_specular.specular = glm::vec3(0.6);
 	blue_specular.shininess = 100.0;
 
-	// objects.push_back(new Sphere(1.0, glm::vec3(1, -2, 8), blue_specular));
-	// objects.push_back(new Sphere(0.5, glm::vec3(-1, -2.5, 6), red_specular));
+	// spheres
+	objects.push_back(new Sphere(1.0, glm::vec3(1, -2, 8), blue_specular));
+	objects.push_back(new Sphere(0.5, glm::vec3(-1, -2.5, 6), red_specular));
 
 	// meshes
-	auto *armadillo = new Mesh("meshes/armadillo_with_normals.obj", green_diffuse);
+	// auto *armadillo = new Mesh("meshes/armadillo_with_normals.obj", green_diffuse);
 
-	glm::mat4 S = glm::scale(glm::vec3(1.5f));
-	glm::mat4 R = glm::mat4(1.0f);
-	glm::mat4 T = glm::translate(glm::vec3(-5.0f, -3.0f, 10.0f));
-	armadillo->setTransformation(T * R * S);
+	// glm::mat4 S = glm::scale(glm::vec3(1.5f));
+	// glm::mat4 R = glm::mat4(1.0f);
+	// glm::mat4 T = glm::translate(glm::vec3(-5.0f, -3.0f, 10.0f));
+	// armadillo->setTransformation(T * R * S);
 
-	objects.push_back(armadillo);
+	// objects.push_back(armadillo);
 
-	auto *bunny = new Mesh("meshes/bunny_with_normals.obj", green_diffuse);
+	// auto *bunny = new Mesh("meshes/bunny_with_normals.obj", green_diffuse);
 
-	S = glm::scale(glm::vec3(1.5f));
-	R = glm::mat4(1.0f);
-	T = glm::translate(glm::vec3(0.0f, -3.0f, 10.0f));
-	bunny->setTransformation(T * R * S);
+	// S = glm::scale(glm::vec3(1.5f));
+	// R = glm::mat4(1.0f);
+	// T = glm::translate(glm::vec3(0.0f, -3.0f, 10.0f));
+	// bunny->setTransformation(T * R * S);
 
-	objects.push_back(bunny);
+	// objects.push_back(bunny);
 
-	auto *lucy = new Mesh("meshes/lucy_with_normals.obj", green_diffuse);
+	// auto *lucy = new Mesh("meshes/lucy_with_normals.obj", green_diffuse);
 
-	S = glm::scale(glm::vec3(1.5f));
-	R = glm::mat4(1.0f);
-	T = glm::translate(glm::vec3(5.0f, -3.0f, 10.0f));
-	lucy->setTransformation(T * R * S);
+	// S = glm::scale(glm::vec3(1.5f));
+	// R = glm::mat4(1.0f);
+	// T = glm::translate(glm::vec3(5.0f, -3.0f, 10.0f));
+	// lucy->setTransformation(T * R * S);
 
-	objects.push_back(lucy);
+	// objects.push_back(lucy);
 
 	// lights
 
 	lights.push_back(new Light(glm::vec3(0, 26, 5), glm::vec3(1.0, 1.0, 1.0)));
-	lights.push_back(new Light(glm::vec3(0, 1, 12), glm::vec3(0.1)));
-	lights.push_back(new Light(glm::vec3(0, 5, 1), glm::vec3(0.4)));
+	// lights.push_back(new Light(glm::vec3(0, 1, 12), glm::vec3(0.1)));
+	// lights.push_back(new Light(glm::vec3(0, 5, 1), glm::vec3(0.4)));
 
 	Material red_diffuse;
 	red_diffuse.ambient = glm::vec3(0.09f, 0.06f, 0.06f);
@@ -835,3 +893,56 @@ int main(int argc, const char *argv[])
 
 	return 0;
 }
+// Hey Rafa here is the documentation for the added features:
+// ================================================================
+// Secondary Effects Added (Shadows + Reflections)
+// ================================================================
+//
+// Overall:
+// --------
+// Added support for two core ray-tracing effects:
+//   1) Shadows -> points only receive light if visible to the light
+//   2) Reflections -> reflective materials spawn secondary reflection rays
+//
+// Introduced two global constants:
+//   EPSILON   -> small offset to avoid self-intersection (“acne”)
+//   MAX_DEPTH -> recursion limit for reflections
+//
+// Material was extended with:
+//   float reflectivity;  // 0 = no reflection, 1 = perfect mirror
+//
+// =================================================================
+// PhongModel() — Shadow Rays
+// =================================================================
+//
+// For every light, we now:
+//   - Compute a shadow ray from the surface point toward the light
+//   - Offset the origin by normal * EPSILON to avoid self-shadowing
+//   - Check whether any object intersects that shadow ray before the light
+//     • If an object blocks the light → skip diffuse+specular for that light
+//   - Otherwise compute:
+//       diffuse = kd * max(dot(N, L), 0)
+//       specular = ks * pow(dot(V, R), shininess)
+//   - Still apply ambient term as before (ambient light is not shadowed)
+//
+// Result: Proper hard shadows cast by all opaque objects.
+//
+// =================================================================
+// trace_ray() — Recursive Perfect Reflections
+// =================================================================
+//
+// trace_ray now takes an additional parameter: recursion depth.
+// The logic is:
+//   1) Find closest object hit (unchanged)
+//   2) Compute local lighting using PhongModel (unchanged)
+//   3) If material.reflectivity == 0, return local shading
+//   4) Otherwise:
+//        - Compute reflection direction using glm::reflect()
+//        - Spawn a new ray from (point + normal * EPSILON)
+//        - Recursively call trace_ray(reflRay, depth + 1)
+//        - Mix local+reflection via:
+//            color = (1 - kr) * local + kr * reflection
+//   5) Prevent infinite recursion via MAX_DEPTH
+//
+// Result: Objects with reflectivity > 0 act as mirrors.
+// ================================================================
