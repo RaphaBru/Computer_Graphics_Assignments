@@ -9,6 +9,8 @@
 #include <vector>
 #include "glm/glm.hpp"
 #include "glm/gtx/transform.hpp"
+#include <sstream>
+#include <array>
 
 #include "Image.h"
 #include "Material.h"
@@ -18,77 +20,459 @@ using namespace std;
 /**
  Class representing a single ray.
  */
-class Ray{
+class Ray
+{
 public:
-    glm::vec3 origin; ///< Origin of the ray
-    glm::vec3 direction; ///< Direction of the ray
-	/**
-	 Contructor of the ray
-	 @param origin Origin of the ray
-	 @param direction Direction of the ray
-	 */
-    Ray(glm::vec3 origin, glm::vec3 direction) : origin(origin), direction(direction){
-    }
+	glm::vec3 origin;	 ///< Origin of the ray
+	glm::vec3 direction; ///< Direction of the ray
+						 /**
+						  Contructor of the ray
+						  @param origin Origin of the ray
+						  @param direction Direction of the ray
+						  */
+	Ray(glm::vec3 origin, glm::vec3 direction) : origin(origin), direction(direction)
+	{
+	}
 };
-
 
 class Object;
 
 /**
  Structure representing the even of hitting an object
  */
-struct Hit{
-    bool hit; ///< Boolean indicating whether there was or there was no intersection with an object
-    glm::vec3 normal; ///< Normal vector of the intersected object at the intersection point
-    glm::vec3 intersection; ///< Point of Intersection
-    float distance; ///< Distance from the origin of the ray to the intersection point
-    Object *object; ///< A pointer to the intersected object
+struct Hit
+{
+	bool hit;				///< Boolean indicating whether there was or there was no intersection with an object
+	glm::vec3 normal;		///< Normal vector of the intersected object at the intersection point
+	glm::vec3 intersection; ///< Point of Intersection
+	float distance;			///< Distance from the origin of the ray to the intersection point
+	Object *object;			///< A pointer to the intersected object
 };
 
 /**
  General class for the object
  */
-class Object{
-	
+class Object
+{
+
 protected:
-	glm::mat4 transformationMatrix; ///< Matrix representing the transformation from the local to the global coordinate system
+	glm::mat4 transformationMatrix;		   ///< Matrix representing the transformation from the local to the global coordinate system
 	glm::mat4 inverseTransformationMatrix; ///< Matrix representing the transformation from the global to the local coordinate system
-	glm::mat4 normalMatrix; ///< Matrix for transforming normal vectors from the local to the global coordinate system
-	
+	glm::mat4 normalMatrix;				   ///< Matrix for transforming normal vectors from the local to the global coordinate system
+
 public:
-	glm::vec3 color; ///< Color of the object
+	glm::vec3 color;   ///< Color of the object
 	Material material; ///< Structure describing the material of the object
-	/** A function computing an intersection, which returns the structure Hit */
-    virtual Hit intersect(Ray ray) = 0;
+					   /** A function computing an intersection, which returns the structure Hit */
+	virtual Hit intersect(Ray ray) = 0;
 
 	/** Function that returns the material struct of the object*/
-	Material getMaterial(){
+	Material getMaterial()
+	{
 		return material;
 	}
 	/** Function that set the material
 	 @param material A structure describing the material of the object
 	*/
-	void setMaterial(Material material){
+	void setMaterial(Material material)
+	{
 		this->material = material;
 	}
 	/** Functions for setting up all the transformation matrices
 	@param matrix The matrix representing the transformation of the object in the global coordinates */
-	void setTransformation(glm::mat4 matrix){
-			
+	void setTransformation(glm::mat4 matrix)
+	{
+
 		transformationMatrix = matrix;
 
 		inverseTransformationMatrix = glm::inverse(matrix);
 		normalMatrix = glm::transpose(inverseTransformationMatrix);
 	}
 };
+class Plane : public Object
+{
+
+private:
+	glm::vec3 normal;
+	glm::vec3 point;
+
+public:
+	Plane(glm::vec3 point, glm::vec3 normal) : point(point), normal(normal)
+	{
+	}
+	Plane(glm::vec3 point, glm::vec3 normal, Material material) : point(point), normal(normal)
+	{
+		this->material = material;
+	}
+	Hit intersect(Ray ray)
+	{
+
+		Hit hit;
+		hit.hit = false;
+
+		float DdotN = glm::dot(ray.direction, normal);
+		if (DdotN < 0)
+		{
+
+			float PdotN = glm::dot(point - ray.origin, normal);
+			float t = PdotN / DdotN;
+
+			if (t > 0)
+			{
+				hit.hit = true;
+				hit.normal = normal;
+				hit.distance = t;
+				hit.object = this;
+				hit.intersection = t * ray.direction + ray.origin;
+			}
+		}
+
+		return hit;
+	}
+};
+// Assignment 3: Class for ray triangle intersection
+//
+// General plan:
+// 1) Ray-Plane intersection
+// normal: n = (b-a) x (c-a)
+// plane base point: p0 = a
+// ray distance: t = - <n, o - p0> / <n, d> 
+// 2) Barycentric test via subtriangle areas, as shown in the lecture notes (Slide 16)
+// subtriangle normals: n_i = (p_i+1 - p) x (p_i-1 - p)
+// barycentric weights: lambda_i = <n, n_i> / ||n||^2  --> use ||n||^2 = <n, n>
+// if all three weights are >= 0 --> intersection is inside triangle
+// 3) Return intersection and normal
+// 3.1) if no vertex normals are provided: flat shading --> return triangle plane's normal (normalized)
+// 3.2) if vertex normals are provided: smooth shading --> normal = normalize(weight1 * normal_vertex_1 + weight2 * normal_vertex_2 + weight3 * normal_vertex_3)
+class Triangle : public Object
+{
+private:
+	std::array<glm::vec3, 3> vertices;
+	std::array<glm::vec3, 3> vertex_normals;
+	bool has_vertex_normals = false;
+
+public:
+	// constructor for flat shading --> no vertex normals provided
+	Triangle(std::array<glm::vec3, 3> v, Material material) : vertices(v)
+	{
+		this->material = material;
+		// triangles live in mesh-local; leave Object's transforms as identity
+		setTransformation(glm::mat4(1.0f));
+	}
+
+	// constructor for smooth shading --> vertex normals provided
+	Triangle(std::array<glm::vec3, 3> v, std::array<glm::vec3, 3> vn, Material material)
+		: vertices(v), vertex_normals(vn), has_vertex_normals(true)
+	{
+		this->material = material;
+		setTransformation(glm::mat4(1.0f));
+	}
+
+	Hit intersect(Ray ray) override
+	{
+		// ray and triangle are in the SAME (mesh-local) space. we handle transformations in the mesh, so all triangles are transformed
+		// 1) Ray-plane intersection: n = (b-a) x (c-a)
+		const glm::vec3 &a = vertices[0];
+		const glm::vec3 &b = vertices[1];
+		const glm::vec3 &c = vertices[2];
+
+		glm::vec3 ab = b - a;
+		glm::vec3 ac = c - a;
+		glm::vec3 n = glm::cross(ab, ac);
+		float nlen2 = glm::dot(n, n);
+		Hit out{};
+		out.hit = false;
+
+		// Degenerate?
+		if (nlen2 <= 0.0f)
+			return out;
+
+		float denom = glm::dot(n, ray.direction);
+		if (fabs(denom) < 1e-8f)
+			return out; // parallel to plane
+
+		float t = glm::dot(n, a - ray.origin) / denom;
+		if (t <= 0.0f)
+			return out; // behind or at origin
+
+		glm::vec3 p = ray.origin + t * ray.direction; // intersection point on plane
+
+		// 2) Barycentric test via subtriangle areas (using cross products)
+		glm::vec3 n1 = glm::cross(b - p, c - p);
+		glm::vec3 n2 = glm::cross(c - p, a - p);
+		glm::vec3 n3 = glm::cross(a - p, b - p);
+
+		float w1 = glm::dot(n, n1) / nlen2;
+		float w2 = glm::dot(n, n2) / nlen2;
+		float w3 = glm::dot(n, n3) / nlen2;
+
+		// Inside if all >= 0 (no epsilon for simplicity; add small -1e-6f if needed)
+		if (w1 < 0.0f || w2 < 0.0f || w3 < 0.0f)
+			return out;
+
+		// 3) Normal depends on flat vs smooth shading
+		glm::vec3 normal;
+		// if vertex normals were provided --> smooth shading
+		if (has_vertex_normals)
+		{
+			normal = glm::normalize(w1 * vertex_normals[0] + w2 * vertex_normals[1] + w3 * vertex_normals[2]);
+		}
+		// else: flat shading
+		else
+		{
+			// use normalized triangle plane vector
+			normal = glm::normalize(n);
+		}
+
+		// Fill hit in LOCAL coords; distance is t along THIS ray
+		out.hit = true;
+		out.object = this;	  // not used by Mesh (Mesh will overwrite), but fine
+		out.intersection = p; // local
+		out.normal = normal;  // local
+		out.distance = t;	  // IMPORTANT: t in local space
+
+		return out;
+	}
+};
+
+// Assignment 3: Class representing a mesh object made up of triangles
+// 1) loadOBJ: Parse OBJ file to extract vertices, triangles and normals
+// 2) buildTriangles: build triangles for each parsed triangle
+// 3) Hit intersect: transform ray to local coordinates, intersect with each triangle, re-transform the resulting hit
+// With this set-up, we ensure that transformations are applied to all triangles of the mesh
+class Mesh : public Object
+{
+public:
+	std::vector<Triangle *> triangles;			   // pointers to all triangles of the mesh
+	std::vector<glm::vec3> vertices;			   // vertices from v lines
+	std::vector<glm::vec3> normals;				   // normals from vn lines (if provided)
+	std::vector<std::array<int, 3>> faces;		   // triangles from f lines
+	std::vector<std::array<int, 3>> normalIndices; // indices of the three vertex normals of a triangle
+	bool hasNormals = false;					   // true if vertex normals are provided, else false
+
+	Mesh(std::string filename, Material m)
+	{
+		this->material = m;
+		loadOBJ(filename, m);
+	}
+
+	void loadOBJ(const std::string &filepath, Material m)
+	{
+		std::ifstream in(filepath);
+
+		// Check if the file is open, if not print an error message and return
+		if (!in.is_open())
+		{
+			std::cerr << "Error: could not open OBJ file " << filepath << std::endl;
+			return;
+		}
+
+		// initialize temporary storage for positions and normals
+		std::vector<glm::vec3> posnTmp;
+		std::vector<glm::vec3> nrmTmp;
+		std::string row;
+
+		// helpers to parse integers and split strings
+		auto parseInt = [](const std::string &s) -> int
+		{
+			int v = 0;
+			std::istringstream is(s);
+			is >> v;
+			return v;
+		};
+
+		auto splitBySlash = [](const std::string &token) -> std::vector<std::string>
+		{
+			std::vector<std::string> parts;
+			std::string cur;
+			for (char ch : token)
+			{
+				if (ch == '/')
+				{
+					parts.push_back(cur);
+					cur.clear();
+				}
+				else
+					cur.push_back(ch);
+			}
+			parts.push_back(cur);
+			return parts;
+		};
+
+		// while we read lines from the file
+		while (std::getline(in, row))
+		{
+			if (row.size() < 2)
+				continue;
+
+			// here we check for a space after the first character to distinguish between "v " and "vn "
+			if (row[0] == 'v' && row[1] == ' ')
+			{
+				// vertex position
+				std::istringstream ss(row.substr(2)); // we need to skip the "v " part of the line
+				glm::vec3 p;
+				ss >> p.x >> p.y >> p.z; // we read the three components from the rest of ss stream
+										 // and store them in a glm::vec3
+										 // finally we add the position to the positions vector
+				posnTmp.push_back(p);
+			}
+			else if (row.rfind("vn ", 0) == 0)
+			{
+				// vertex normal
+				std::istringstream ss(row.substr(3)); // skip "vn "
+				glm::vec3 n;
+				ss >> n.x >> n.y >> n.z; // read normal components
+										 // normalize and store
+				nrmTmp.push_back(glm::normalize(n));
+			}
+			else if (row.rfind("f ", 0) == 0)
+			{
+				std::istringstream ss(row.substr(2));
+				std::string a, b, c;
+				ss >> a >> b >> c;
+				if (a.empty() || b.empty() || c.empty())
+					continue;
+
+				auto parseTriplet = [&](const std::string &tok, int &vi, int &vti, int &vni)
+				{
+					auto parts = splitBySlash(tok);
+					// OBJ indices are 1-based; we’ll store 0-based later
+					vi = parts.size() >= 1 && !parts[0].empty() ? parseInt(parts[0]) : 0;
+					vti = parts.size() >= 2 && !parts[1].empty() ? parseInt(parts[1]) : 0;
+					vni = parts.size() >= 3 && !parts[2].empty() ? parseInt(parts[2]) : 0;
+				};
+
+				int av = 0, bv = 0, cv = 0, at = 0, bt = 0, ct = 0, an = 0, bn = 0, cn = 0;
+
+				// Handle v/vt/vn, v//vn, or v
+				if (a.find('/') != std::string::npos ||
+					b.find('/') != std::string::npos ||
+					c.find('/') != std::string::npos)
+				{
+					parseTriplet(a, av, at, an);
+					parseTriplet(b, bv, bt, bn);
+					parseTriplet(c, cv, ct, cn);
+
+					if (av > 0 && bv > 0 && cv > 0)
+					{
+						faces.push_back({av - 1, bv - 1, cv - 1});
+						if (an > 0 && bn > 0 && cn > 0)
+						{
+							normalIndices.push_back({an - 1, bn - 1, cn - 1});
+							hasNormals = true;
+						}
+					}
+				}
+				else
+				{
+					// positions only: "f v v v"
+					int iv1 = parseInt(a), iv2 = parseInt(b), iv3 = parseInt(c);
+					if (iv1 > 0 && iv2 > 0 && iv3 > 0)
+					{
+						faces.push_back({iv1 - 1, iv2 - 1, iv3 - 1});
+					}
+				}
+			}
+		}
+		// move parsed data into member storage
+		vertices = std::move(posnTmp);
+		normals = std::move(nrmTmp);
+		// create Triangle objects now (identity transform; we can set a real one later)
+		buildTriangles(m, glm::mat4(1.0f));
+		// we must close the file when we are done
+		in.close();
+	}
+
+	Hit intersect(Ray ray) override
+	{
+		// 1) World --> Mesh-local
+		glm::vec3 oL = glm::vec3(inverseTransformationMatrix * glm::vec4(ray.origin, 1.0f));
+		glm::vec3 dL = glm::normalize(glm::vec3(inverseTransformationMatrix * glm::vec4(ray.direction, 0.0f)));
+		Ray rLocal(oL, dL);
+
+		Hit best{};
+		best.hit = false;
+		best.distance = INFINITY;
+
+		// 2) Test all triangles (they expect mesh-local rays)
+		for (auto *tri : triangles)
+		{
+			Hit h = tri->intersect(rLocal);
+			if (h.hit && h.distance < best.distance)
+				best = h;
+		}
+
+		if (!best.hit)
+			return best;
+
+		// 3) Mesh-local --> World (for the chosen hit only)
+		glm::vec3 pW = glm::vec3(transformationMatrix * glm::vec4(best.intersection, 1.0f));
+		glm::vec3 nW = glm::normalize(glm::vec3(normalMatrix * glm::vec4(best.normal, 0.0f)));
+
+		best.intersection = pW;
+		best.normal = nW;
+		best.distance = glm::length(pW - ray.origin); // true world-space distance
+		best.object = this;							  // ensure Phong uses Mesh material
+
+		return best;
+	}
+
+	// builds triangle objects from the parsed vertex and face data
+	void buildTriangles(Material material, const glm::mat4 &transformation_matrix)
+	{
+		// clear previous triangles (if any) and pre-allocate space for all faces
+		triangles.clear();
+		triangles.reserve(faces.size());
+
+		// loop over all faces
+		for (size_t i = 0; i < faces.size(); ++i)
+		{
+			// get the vertex indices for this face (assumed 0-based)
+			const auto &face = faces[i];
+
+			// gather the three vertex positions for this triangle
+			std::array<glm::vec3, 3> triangle_vertices = {
+				vertices[face[0]],
+				vertices[face[1]],
+				vertices[face[2]]};
+
+			Triangle *new_triangle = nullptr; // initialize Triangle outside if/else
+
+			// if vertex normals are provided --> smooth shading
+			bool faceHasNormals = (i < normalIndices.size());
+			if (faceHasNormals)
+			{
+				const auto &normal_index = normalIndices[i];
+				std::array<glm::vec3, 3> triangle_vertex_normals = {
+					normals[normal_index[0]],
+					normals[normal_index[1]],
+					normals[normal_index[2]]};
+				new_triangle = new Triangle(triangle_vertices, triangle_vertex_normals, material);
+			}
+
+			// else --> flat shading
+			else
+			{
+				new_triangle = new Triangle(triangle_vertices, material);
+			}
+
+			// apply the same transformation matrix to all triangles of this mesh
+			new_triangle->setTransformation(transformation_matrix);
+
+			// store pointer to triangle
+			triangles.push_back(new_triangle);
+		}
+	}
+};
 
 /**
  Implementation of the class Object for sphere shape.
  */
-class Sphere : public Object{
+class Sphere : public Object
+{
 private:
-    float radius; ///< Radius of the sphere
-    glm::vec3 center; ///< Center of the sphere
+	float radius;	  ///< Radius of the sphere
+	glm::vec3 center; ///< Center of the sphere
 
 public:
 	/**
@@ -97,383 +481,149 @@ public:
 	 @param center Center of the sphere
 	 @param color Color of the sphere
 	 */
-    Sphere(float radius, glm::vec3 center, glm::vec3 color) : radius(radius), center(center){
+	Sphere(float radius, glm::vec3 center, glm::vec3 color) : radius(radius), center(center)
+	{
 		this->color = color;
-    }
-	Sphere(float radius, glm::vec3 center, Material material) : radius(radius), center(center){
+	}
+	Sphere(float radius, glm::vec3 center, Material material) : radius(radius), center(center)
+	{
 		this->material = material;
 	}
 	/** Implementation of the intersection function*/
-    Hit intersect(Ray ray){
+	Hit intersect(Ray ray)
+	{
 
-        glm::vec3 c = center - ray.origin;
+		glm::vec3 c = center - ray.origin;
 
-        float cdotc = glm::dot(c,c);
-        float cdotd = glm::dot(c, ray.direction);
+		float cdotc = glm::dot(c, c);
+		float cdotd = glm::dot(c, ray.direction);
 
-        Hit hit;
+		Hit hit;
 
-        float D = 0;
-		if (cdotc > cdotd*cdotd){
-			D =  sqrt(cdotc - cdotd*cdotd);
+		float D = 0;
+		if (cdotc > cdotd * cdotd)
+		{
+			D = sqrt(cdotc - cdotd * cdotd);
 		}
-        if(D<=radius){
-            hit.hit = true;
-            float t1 = cdotd - sqrt(radius*radius - D*D);
-            float t2 = cdotd + sqrt(radius*radius - D*D);
+		if (D <= radius)
+		{
+			hit.hit = true;
+			float t1 = cdotd - sqrt(radius * radius - D * D);
+			float t2 = cdotd + sqrt(radius * radius - D * D);
 
-            float t = t1;
-            if(t<0) t = t2;
-            if(t<0){
-                hit.hit = false;
-                return hit;
-            }
+			float t = t1;
+			if (t < 0)
+				t = t2;
+			if (t < 0)
+			{
+				hit.hit = false;
+				return hit;
+			}
 
 			hit.intersection = ray.origin + t * ray.direction;
 			hit.normal = glm::normalize(hit.intersection - center);
 			hit.distance = glm::distance(ray.origin, hit.intersection);
 			hit.object = this;
-        }
-		else{
-            hit.hit = false;
+		}
+		else
+		{
+			hit.hit = false;
 		}
 		return hit;
-    }
-};
-
-class Plane : public Object{
-
-private:
-	glm::vec3 normal;
-	glm::vec3 point;
-
-public:
-	Plane(glm::vec3 point, glm::vec3 normal) : point(point), normal(normal){
-	}
-	Plane(glm::vec3 point, glm::vec3 normal, Material material) : point(point), normal(normal){
-		this->material = material;
-	}
-	Hit intersect(Ray ray){
-		
-		Hit hit;
-		hit.hit = false;
-		
-        float DdotN = glm::dot(ray.direction, normal);
-        if(DdotN < 0){
-            
-            float PdotN = glm::dot (point-ray.origin, normal);
-            float t = PdotN/DdotN;
-            
-            if(t > 0){
-                hit.hit = true;
-                hit.normal = normal;
-                hit.distance = t;
-                hit.object = this;
-                hit.intersection = t * ray.direction + ray.origin;
-            }
-        }
-		
-		return hit;
 	}
 };
 
-class Cone : public Object{
+class Cone : public Object
+{
 private:
 	Plane *plane;
-	
+
 public:
-	Cone(Material material){
+	Cone(Material material)
+	{
 		this->material = material;
-		plane = new Plane(glm::vec3(0,1,0), glm::vec3(0.0,1,0));
+		plane = new Plane(glm::vec3(0, 1, 0), glm::vec3(0.0, 1, 0));
 	}
-	Hit intersect(Ray ray){
-		
+	Hit intersect(Ray ray)
+	{
+
 		Hit hit;
 		hit.hit = false;
-		
-		glm::vec3 d = inverseTransformationMatrix * glm::vec4(ray.direction, 0.0); //implicit cast to vec3
-		glm::vec3 o = inverseTransformationMatrix * glm::vec4(ray.origin, 1.0); //implicit cast to vec3
+
+		glm::vec3 d = inverseTransformationMatrix * glm::vec4(ray.direction, 0.0); // implicit cast to vec3
+		glm::vec3 o = inverseTransformationMatrix * glm::vec4(ray.origin, 1.0);	   // implicit cast to vec3
 		d = glm::normalize(d);
-		
-		
-		float a = d.x*d.x + d.z*d.z - d.y*d.y;
+
+		float a = d.x * d.x + d.z * d.z - d.y * d.y;
 		float b = 2 * (d.x * o.x + d.z * o.z - d.y * o.y);
 		float c = o.x * o.x + o.z * o.z - o.y * o.y;
-		
-		float delta = b*b - 4 * a * c;
-		
-		if(delta < 0){
+
+		float delta = b * b - 4 * a * c;
+
+		if (delta < 0)
+		{
 			return hit;
 		}
-		
-		float t1 = (-b-sqrt(delta)) / (2*a);
-		float t2 = (-b+sqrt(delta)) / (2*a);
-		
+
+		float t1 = (-b - sqrt(delta)) / (2 * a);
+		float t2 = (-b + sqrt(delta)) / (2 * a);
+
 		float t = t1;
-		hit.intersection = o + t*d;
-		if(t<0 || hit.intersection.y>1 || hit.intersection.y<0){
+		hit.intersection = o + t * d;
+		if (t < 0 || hit.intersection.y > 1 || hit.intersection.y < 0)
+		{
 			t = t2;
-			hit.intersection = o + t*d;
-			if(t<0 || hit.intersection.y>1 || hit.intersection.y<0){
+			hit.intersection = o + t * d;
+			if (t < 0 || hit.intersection.y > 1 || hit.intersection.y < 0)
+			{
 				return hit;
 			}
 		};
-	
+
 		hit.normal = glm::vec3(hit.intersection.x, -hit.intersection.y, hit.intersection.z);
 		hit.normal = glm::normalize(hit.normal);
-	
-		
-		Ray new_ray(o,d);
+
+		Ray new_ray(o, d);
 		Hit hit_plane = plane->intersect(new_ray);
-		if(hit_plane.hit && hit_plane.distance < t && length(hit_plane.intersection - glm::vec3(0,1,0)) <= 1.0 ){
+		if (hit_plane.hit && hit_plane.distance < t && length(hit_plane.intersection - glm::vec3(0, 1, 0)) <= 1.0)
+		{
 			hit.intersection = hit_plane.intersection;
 			hit.normal = hit_plane.normal;
 		}
-		
+
 		hit.hit = true;
 		hit.object = this;
-		hit.intersection = transformationMatrix * glm::vec4(hit.intersection, 1.0); //implicit cast to vec3
-		hit.normal = (normalMatrix * glm::vec4(hit.normal, 0.0)); //implicit cast to vec3
+		hit.intersection = transformationMatrix * glm::vec4(hit.intersection, 1.0); // implicit cast to vec3
+		hit.normal = (normalMatrix * glm::vec4(hit.normal, 0.0));					// implicit cast to vec3
 		hit.normal = glm::normalize(hit.normal);
 		hit.distance = glm::length(hit.intersection - ray.origin);
-		
+
 		return hit;
 	}
-};
-
-// Assignment 3: Class for ray triangle intersection
-class Triangle : public Object{
-private:
-	std::array<glm::vec3, 3> vertices;
-	std::array<glm::vec3, 3> vertex_normals;
-	bool has_vertex_normals = false;
-	Plane *plane;
-	
-public:
-	// constructor for flat shading --> no vertex normals provided
-	Triangle(std::array<glm::vec3, 3> vertices, Material material) : vertices(vertices){
-		this->material = material;
-		// construct an infinite plane from the triangle vertices - a plane needs a base point and a normal
-		// use first triangle vertex as base point
-		// compute normal with cross product: (Point2 - Point1) x (Point3 - Point1), normalize result
-		plane = new Plane(vertices[0], glm::normalize(glm::cross((vertices[1] - vertices[0]), (vertices[2] - vertices[0]))));
-	}
-
-	// constructor for smooth shading --> vertex normals provided
-	Triangle(std::array<glm::vec3, 3> vertices, std::array<glm::vec3, 3> vertex_normals, Material material) : vertices(vertices), vertex_normals(vertex_normals), has_vertex_normals(true){
-		this->material = material;
-		plane = new Plane(vertices[0], glm::normalize(glm::cross((vertices[1] - vertices[0]), (vertices[2] - vertices[0]))));
-	}
-	Hit intersect(Ray ray){
-		
-		// setup for transformations: transform ray to local coordinates (same as in Cone class from template)
-		glm::vec3 d = inverseTransformationMatrix * glm::vec4(ray.direction, 0.0); //implicit cast to vec3
-		d = glm::normalize(d);
-		glm::vec3 o = inverseTransformationMatrix * glm::vec4(ray.origin, 1.0); //implicit cast to vec3
-		Ray new_ray(o,d);
-		
-		// compute intersection with infinite plane
-		Hit hit = plane->intersect(new_ray);
-		if (hit.hit == false){
-			return hit;
-		}
-
-		// extract vertices for easier handling
-		glm::vec3 point1 = vertices[0];
-		glm::vec3 point2 = vertices[1];
-		glm::vec3 point3 = vertices[2];
-
-		glm::vec3 intersection = hit.intersection; // intersection point, p
-		glm::vec3 n_plane = glm::cross((point2 - point1), (point3 - point1)); // normal of triangle plane - intentionally not normalized
-
-		// Subtriangle normals: n_i = (p_i+1 - p) x (p_i-1 - p)   (Lecture Slide 16)
-		glm::vec3 n1 = glm::cross((point2 - intersection), (point3 - intersection));
-		glm::vec3 n2 = glm::cross((point3 - intersection), (point1 - intersection));
-		glm::vec3 n3 = glm::cross((point1 - intersection), (point2 - intersection));
-
-		// lambda_i = <n, n_i> / ||n||^2  --> use ||n||^2 = <n, n>
-		float n_magnitude_squared = glm::dot(n_plane, n_plane);
-
-		// check for degenerate triangle
-		if (n_magnitude_squared <= 0.0f){
-			hit.hit = false;
-			return hit;
-		}
-
-		float weight1 = glm::dot(n_plane, n1) / n_magnitude_squared;
-		float weight2 = glm::dot(n_plane, n2) / n_magnitude_squared;
-		float weight3 = glm::dot(n_plane, n3) / n_magnitude_squared;
-
-		// the intersection is inside the triangle if all weights are >= 0
-		// if not (!), return the hit as false
-		if (!(weight1 >= 0 && weight2 >= 0 && weight3 >=0)){
-			hit.hit = false;
-			return hit;
-		}
-
-		// compute normal vector
-		glm::vec3 normal;
-
-		// if vertex normals were provided --> smooth shading
-		if (has_vertex_normals){
-			// normal vector = weighted vertex normals = weight1 * vertex_normal1 + ... + weight3 * vertex_normal3
-			normal = glm::normalize(weight1 * vertex_normals[0] + weight2 * vertex_normals[1] + weight3 * vertex_normals[2]);
-		}
-		// else: flat shading
-		else {
-			// use normalized triangle plane vector
-			normal = glm::normalize(n_plane);
-		}
-
-		// transform intersection and normal back to global coordinates  (same as in Cone class from template)
-		intersection = transformationMatrix * glm::vec4(intersection, 1.0); //implicit cast to vec3
-		normal = normalMatrix * glm::vec4(normal, 0.0); //implicit cast to vec3
-		normal = glm::normalize(normal);
-
-		// populate hit struct
-		hit.hit = true;
-		hit.object = this;
-		hit.intersection = intersection;
-		hit.normal = normal;
-		hit.distance = glm::length(hit.intersection - ray.origin); // original ray (global), not transformed ray (local)
-		
-		return hit;
-	}
-};
-
-// Assignment 3: class that prepares mesh from OBJ file and creates triangles
-class Mesh : public Object {
-public:
-    std::vector<Triangle*> triangles;  // pointers to all triangles of the mesh
-    std::vector<glm::vec3> vertices;   // vertices from v lines
-    std::vector<glm::vec3> normals;    // normals from vn lines (if provided)
-    std::vector<std::array<int, 3>> faces; // triangles from f lines
-    std::vector<std::array<int, 3>> normalIndices; // indices of the three vertex normals of a triangle
-    bool hasNormals = false; // true if vertex normals are provided, else false
-
-    // Constructor that loads and builds triangles
-    Mesh(std::string filename, Material material, const glm::mat4& transformation_matrix) {
-        loadOBJ(filename); // loads and parses the OBJ file, prepares triangle data
-        buildTriangles(material, transformation_matrix); // builds a Triangle object for each extracted mesh triangle
-    }
-
-	// dummy intersection: Mesh itself is not hittable, only its triangles are
-    Hit intersect(Ray /*ray*/) override {
-        Hit hit;
-        hit.hit = false;
-        return hit;
-    }
-
-private:
-    void loadOBJ(const std::string& filepath)
-	{
-		// Gio's parsing right here, please.
-		//
-		// All updates and infos from the night owl follow here :-)
-		// The triangle stuff works very well now, the tests work perfectly
-		// See the result_triangles.ppm file in this directory
-		//
-		// Important for compatibility: There are two constructors, they are overloaded so the correct one is always chosen.
-		// Constructor 1: we provide only one array with the three triangle vertices and also provide a material (user chooses that when calling)
-		// Constructor 2: we also provide an array with the three vertex_normals
-		// When you parse, please set the bool hasNormals to true or false, my stuff will handle the rest in buildTriangles below here
-		//
-		// This here is my updated version of the Mesh class
-		// I already built the initial constructor above
-		// I also built the buildTriangles fucntion below. That one goes over the data you prepare here and makes the triangles
-		// So when this class is called, it automatically opens the file, parses it and builds all triangles.
-		// See below in the scene description, where i have already prepared how we will call the Mesh class (lines 630 - 633)
-		//
-		// I wanted to keep your original structure but it clashed somehow with my stuff, no idea why sorry
-		// Is it possible that you fit the parser to this structure here?
-		// If you look at lines 346 - 358 you can see the structure that would be optimal.
-		// I gave your implementation to Mr. Chat and he was mostly happy but then critiqued some stuff, but I did not understand to be honest
-		//
-		// Please be careful of this:
-		// when parsing the normal vectors, please normalize them directly (they are not guaranteed to be normalized in the OBJ file)
-		// my code is currently assuming zero-based indexing and the file does one-based indexing.
-		// parse order: handle "vn " before "v " (since "vn " starts with "v ")
-		//
-		// I think we are very very close to completing all, sorry if my notes are too unorganized.
-		// I will be online at around 11:50 a.m. to discuss things.
-		// please don't worry too much if my stuff makes no sense
-		// sorry if I messed up the things you already did!!! that was not my intention
-		//
-		// maybe an easy starting point would be to give my structure to Mr. Chat so that he can provide an overview :-)
-		//
-		// oh and I think I missed to include imports at the top for the parsing, probably
-
-	}
-
-    // builds triangle objects from the parsed vertex and face data
-    void buildTriangles(Material material, const glm::mat4& transformation_matrix)
-    {
-        // clear previous triangles (if any) and pre-allocate space for all faces
-        triangles.clear();
-        triangles.reserve(faces.size());
-
-        // loop over all faces
-        for (size_t i = 0; i < faces.size(); ++i)
-        {
-            // get the vertex indices for this face (assumed 0-based)
-            const auto& face = faces[i];
-
-            // gather the three vertex positions for this triangle
-            std::array<glm::vec3, 3> triangle_vertices = {
-                vertices[face[0]],
-                vertices[face[1]],
-                vertices[face[2]]
-            };
-
-            Triangle* new_triangle = nullptr; // initialize Triangle outside if/else
-
-            // if vertex normals are provided --> smooth shading
-            if (hasNormals)
-            {
-                const auto& normal_index = normalIndices[i];
-                std::array<glm::vec3, 3> triangle_vertex_normals = {
-                    normals[normal_index[0]],
-                    normals[normal_index[1]],
-                    normals[normal_index[2]]
-                };
-                new_triangle = new Triangle(triangle_vertices, triangle_vertex_normals, material);
-            }
-
-            // else --> flat shading
-            else
-            {
-                new_triangle = new Triangle(triangle_vertices, material);
-            }
-
-            // apply the same transformation matrix to all triangles of this mesh
-            new_triangle->setTransformation(transformation_matrix);
-
-            // store pointer to triangle
-            triangles.push_back(new_triangle);
-        }
-    }
 };
 
 /**
  Light class
  */
-class Light{
+class Light
+{
 public:
 	glm::vec3 position; ///< Position of the light source
-	glm::vec3 color; ///< Color/intentisty of the light source
-	Light(glm::vec3 position): position(position){
+	glm::vec3 color;	///< Color/intentisty of the light source
+	Light(glm::vec3 position) : position(position)
+	{
 		color = glm::vec3(1.0);
 	}
-	Light(glm::vec3 position, glm::vec3 color): position(position), color(color){
+	Light(glm::vec3 position, glm::vec3 color) : position(position), color(color)
+	{
 	}
 };
 
 vector<Light *> lights; ///< A list of lights in the scene
-//glm::vec3 ambient_light(0.1,0.1,0.1);
-// new ambient light
-glm::vec3 ambient_light(0.001,0.001,0.001);
+// glm::vec3 ambient_light(0.1,0.1,0.1);
+//  new ambient light
+glm::vec3 ambient_light(0.001, 0.001, 0.001);
 vector<Object *> objects; ///< A list of all objects in the scene
-
 
 /** Function for computing color of an object according to the Phong Model
  @param point A point belonging to the object for which the color is computer
@@ -481,10 +631,12 @@ vector<Object *> objects; ///< A list of all objects in the scene
  @param view_direction A normalized direction from the point to the viewer/camera
  @param material A material structure representing the material of the object
 */
-glm::vec3 PhongModel(glm::vec3 point, glm::vec3 normal, glm::vec3 view_direction, Material material){
+glm::vec3 PhongModel(glm::vec3 point, glm::vec3 normal, glm::vec3 view_direction, Material material)
+{
 
 	glm::vec3 color(0.0);
-	for(int light_num = 0; light_num < lights.size(); light_num++){
+	for (int light_num = 0; light_num < lights.size(); light_num++)
+	{
 
 		glm::vec3 light_direction = glm::normalize(lights[light_num]->position - point);
 		glm::vec3 reflected_direction = glm::reflect(-light_direction, normal);
@@ -495,10 +647,10 @@ glm::vec3 PhongModel(glm::vec3 point, glm::vec3 normal, glm::vec3 view_direction
 		glm::vec3 diffuse_color = material.diffuse;
 		glm::vec3 diffuse = diffuse_color * glm::vec3(NdotL);
 		glm::vec3 specular = material.specular * glm::vec3(pow(VdotR, material.shininess));
-		
-        float r = glm::distance(point,lights[light_num]->position);
-        r = max(r, 0.1f);
-        color += lights[light_num]->color * (diffuse + specular) / r/r;
+
+		float r = glm::distance(point, lights[light_num]->position);
+		r = max(r, 0.1f);
+		color += lights[light_num]->color * (diffuse + specular) / r / r;
 	}
 	color += ambient_light * material.ambient;
 	color = glm::clamp(color, glm::vec3(0.0), glm::vec3(1.0));
@@ -510,23 +662,28 @@ glm::vec3 PhongModel(glm::vec3 point, glm::vec3 normal, glm::vec3 view_direction
  @param ray Ray that should be traced through the scene
  @return Color at the intersection point
  */
-glm::vec3 trace_ray(Ray ray){
+glm::vec3 trace_ray(Ray ray)
+{
 
 	Hit closest_hit;
 
 	closest_hit.hit = false;
 	closest_hit.distance = INFINITY;
 
-	for(int k = 0; k<objects.size(); k++){
+	for (int k = 0; k < objects.size(); k++)
+	{
 		Hit hit = objects[k]->intersect(ray);
-		if(hit.hit == true && hit.distance < closest_hit.distance)
+		if (hit.hit == true && hit.distance < closest_hit.distance)
 			closest_hit = hit;
 	}
 
 	glm::vec3 color(0.0);
-	if(closest_hit.hit){
+	if (closest_hit.hit)
+	{
 		color = PhongModel(closest_hit.intersection, closest_hit.normal, glm::normalize(-ray.direction), closest_hit.object->getMaterial());
-	}else{
+	}
+	else
+	{
 		color = glm::vec3(0.0, 0.0, 0.0);
 	}
 	return color;
@@ -534,9 +691,9 @@ glm::vec3 trace_ray(Ray ray){
 /**
  Function defining the scene
  */
-void sceneDefinition (){
+void sceneDefinition()
+{
 
-	
 	Material green_diffuse;
 	green_diffuse.ambient = glm::vec3(0.7f, 0.9f, 0.7f);
 	green_diffuse.diffuse = glm::vec3(0.7f, 0.9f, 0.7f);
@@ -552,139 +709,155 @@ void sceneDefinition (){
 	blue_specular.diffuse = glm::vec3(0.7f, 0.7f, 1.0f);
 	blue_specular.specular = glm::vec3(0.6);
 	blue_specular.shininess = 100.0;
-	
-	
-	//Material green_diffuse;
+
+	// Material green_diffuse;
 	green_diffuse.ambient = glm::vec3(0.03f, 0.1f, 0.03f);
 	green_diffuse.diffuse = glm::vec3(0.3f, 1.0f, 0.3f);
 
-	//Material red_specular;
+	// Material red_specular;
 	red_specular.diffuse = glm::vec3(1.0f, 0.2f, 0.2f);
 	red_specular.ambient = glm::vec3(0.01f, 0.02f, 0.02f);
 	red_specular.specular = glm::vec3(0.5);
 	red_specular.shininess = 10.0;
 
-	//Material blue_specular;
+	// Material blue_specular;
 	blue_specular.ambient = glm::vec3(0.02f, 0.02f, 0.1f);
 	blue_specular.diffuse = glm::vec3(0.2f, 0.2f, 1.0f);
 	blue_specular.specular = glm::vec3(0.6);
 	blue_specular.shininess = 100.0;
 
-	objects.push_back(new Sphere(1.0, glm::vec3(1,-2,8), blue_specular));
-	objects.push_back(new Sphere(0.5, glm::vec3(-1,-2.5,6), red_specular));
-	
+	// objects.push_back(new Sphere(1.0, glm::vec3(1, -2, 8), blue_specular));
+	// objects.push_back(new Sphere(0.5, glm::vec3(-1, -2.5, 6), red_specular));
+
+	// Assignment 3: meshes
+	auto *armadillo = new Mesh("meshes/armadillo_with_normals.obj", green_diffuse);
+
+	glm::mat4 S = glm::scale(glm::vec3(1.5f));
+	glm::mat4 R = glm::mat4(1.0f);
+	glm::mat4 T = glm::translate(glm::vec3(-5.0f, -3.0f, 10.0f));
+	armadillo->setTransformation(T * R * S);
+
+	objects.push_back(armadillo);
+
+	auto *bunny = new Mesh("meshes/bunny_with_normals.obj", blue_specular);
+
+	S = glm::scale(glm::vec3(1.5f));
+	R = glm::mat4(1.0f);
+	T = glm::translate(glm::vec3(0.0f, -3.0f, 10.0f));
+	bunny->setTransformation(T * R * S);
+
+	objects.push_back(bunny);
+
+	auto *lucy = new Mesh("meshes/lucy_with_normals.obj", red_specular);
+
+	S = glm::scale(glm::vec3(1.5f));
+	R = glm::mat4(1.0f);
+	T = glm::translate(glm::vec3(5.0f, -3.0f, 10.0f));
+	lucy->setTransformation(T * R * S);
+
+	objects.push_back(lucy);
+
+	auto *selfmade_cat = new Mesh("meshes/low_poly_cat_smooth.obj", red_specular);
+	S = glm::scale(glm::vec3(0.8f));
+	R = glm::rotate(glm::radians(-45.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+	T = glm::translate(glm::vec3(-0.5f, -1.5f, 4.5f));
+	selfmade_cat->setTransformation(T * R * S);
+	objects.push_back(selfmade_cat);
+
+	// lights
+
 	lights.push_back(new Light(glm::vec3(0, 26, 5), glm::vec3(1.0, 1.0, 1.0)));
 	lights.push_back(new Light(glm::vec3(0, 1, 12), glm::vec3(0.1)));
 	lights.push_back(new Light(glm::vec3(0, 5, 1), glm::vec3(0.4)));
-	
-    Material red_diffuse;
-    red_diffuse.ambient = glm::vec3(0.09f, 0.06f, 0.06f);
-    red_diffuse.diffuse = glm::vec3(0.9f, 0.6f, 0.6f);
-        
-    Material blue_diffuse;
-    blue_diffuse.ambient = glm::vec3(0.06f, 0.06f, 0.09f);
-    blue_diffuse.diffuse = glm::vec3(0.6f, 0.6f, 0.9f);
-    objects.push_back(new Plane(glm::vec3(0,-3,0), glm::vec3(0.0,1,0)));
-    objects.push_back(new Plane(glm::vec3(0,1,30), glm::vec3(0.0,0.0,-1.0), green_diffuse));
-    objects.push_back(new Plane(glm::vec3(-15,1,0), glm::vec3(1.0,0.0,0.0), red_diffuse));
-    objects.push_back(new Plane(glm::vec3(15,1,0), glm::vec3(-1.0,0.0,0.0), blue_diffuse));
-    objects.push_back(new Plane(glm::vec3(0,27,0), glm::vec3(0.0,-1,0)));
-    objects.push_back(new Plane(glm::vec3(0,1,-0.01), glm::vec3(0.0,0.0,1.0), green_diffuse));
-	
+
+	Material red_diffuse;
+	red_diffuse.ambient = glm::vec3(0.09f, 0.06f, 0.06f);
+	red_diffuse.diffuse = glm::vec3(0.9f, 0.6f, 0.6f);
+
+	Material blue_diffuse;
+	blue_diffuse.ambient = glm::vec3(0.06f, 0.06f, 0.09f);
+	blue_diffuse.diffuse = glm::vec3(0.6f, 0.6f, 0.9f);
+	objects.push_back(new Plane(glm::vec3(0, -3, 0), glm::vec3(0.0, 1, 0)));
+	objects.push_back(new Plane(glm::vec3(0, 1, 30), glm::vec3(0.0, 0.0, -1.0), green_diffuse));
+	objects.push_back(new Plane(glm::vec3(-15, 1, 0), glm::vec3(1.0, 0.0, 0.0), red_diffuse));
+	objects.push_back(new Plane(glm::vec3(15, 1, 0), glm::vec3(-1.0, 0.0, 0.0), blue_diffuse));
+	objects.push_back(new Plane(glm::vec3(0, 27, 0), glm::vec3(0.0, -1, 0)));
+	objects.push_back(new Plane(glm::vec3(0, 1, -0.01), glm::vec3(0.0, 0.0, 1.0), green_diffuse));
+
 	// Cones
 	Material yellow_specular;
 	yellow_specular.ambient = glm::vec3(0.1f, 0.10f, 0.0f);
 	yellow_specular.diffuse = glm::vec3(0.4f, 0.4f, 0.0f);
 	yellow_specular.specular = glm::vec3(1.0);
 	yellow_specular.shininess = 100.0;
-	
-	Cone *cone = new Cone(yellow_specular);
-	glm::mat4 translationMatrix = glm::translate(glm::vec3(5,9,14));
-	glm::mat4 scalingMatrix = glm::scale(glm::vec3(3.0f, 12.0f, 3.0f));
-	glm::mat4 rotationMatrix = glm::rotate(glm::radians(180.0f) , glm::vec3(1,0,0));
-	cone->setTransformation(translationMatrix*scalingMatrix*rotationMatrix);
-	objects.push_back(cone);
-	
-	Cone *cone2 = new Cone(green_diffuse);
-	translationMatrix = glm::translate(glm::vec3(6,-3,7));
-	scalingMatrix = glm::scale(glm::vec3(1.0f, 3.0f, 1.0f));
-	rotationMatrix = glm::rotate(glm::atan(3.0f), glm::vec3(0,0,1));
-	cone2->setTransformation(translationMatrix* rotationMatrix*scalingMatrix);
-	objects.push_back(cone2);
 
-	// testing triangles
-	// std::array<glm::vec3, 3> triangle_points = {
-	// 	glm::vec3(-2.0f, 0.0f, 5.0f),
-	// 	glm::vec3(0.0f, 3.0f, 5.0f),
-	// 	glm::vec3(2.0f, 0.0f, 5.0f)
-	// };
-	// Triangle *test_triangle = new Triangle(triangle_points, blue_specular);
-	// test_triangle->setTransformation(glm::mat4(1.0f));
-	// objects.push_back(test_triangle);
+	// Cone *cone = new Cone(yellow_specular);
+	// glm::mat4 translationMatrix = glm::translate(glm::vec3(5, 9, 14));
+	// glm::mat4 scalingMatrix = glm::scale(glm::vec3(3.0f, 12.0f, 3.0f));
+	// glm::mat4 rotationMatrix = glm::rotate(glm::radians(180.0f), glm::vec3(1, 0, 0));
+	// cone->setTransformation(translationMatrix * scalingMatrix * rotationMatrix);
+	// objects.push_back(cone);
 
-	// std::array<glm::vec3, 3> triangle_points2 = {
-	// 	glm::vec3(0.0f, 3.0f, 5.0f),
-	// 	glm::vec3(3.0f, 2.0f, 6.0f),
-	// 	glm::vec3(2.0f, 0.0f, 5.0f)
-	// };
-	// Triangle *test_triangle2 = new Triangle(triangle_points2, red_specular);
-	// test_triangle2->setTransformation(glm::mat4(1.0f));
-	// objects.push_back(test_triangle2);
-
-	// Load a mesh and create triangles
-	Mesh* mesh = new Mesh("models/armadillo.obj", yellow_specular, glm::mat4(1.0f));
-	// Add all triangles from the mesh to the list of objects that are rendered
-	objects.insert(objects.end(), mesh->triangles.begin(), mesh->triangles.end());
-	
+	// Cone *cone2 = new Cone(green_diffuse);
+	// translationMatrix = glm::translate(glm::vec3(6, -3, 7));
+	// scalingMatrix = glm::scale(glm::vec3(1.0f, 3.0f, 1.0f));
+	// rotationMatrix = glm::rotate(glm::atan(3.0f), glm::vec3(0, 0, 1));
+	// cone2->setTransformation(translationMatrix * rotationMatrix * scalingMatrix);
+	// objects.push_back(cone2);
 }
-glm::vec3 toneMapping(glm::vec3 intensity){
-	float gamma = 1.0/2.0;
+glm::vec3 toneMapping(glm::vec3 intensity)
+{
+	float gamma = 1.0 / 2.0;
 	float alpha = 12.0f;
 	return glm::clamp(alpha * glm::pow(intensity, glm::vec3(gamma)), glm::vec3(0.0), glm::vec3(1.0));
 }
-int main(int argc, const char * argv[]) {
+int main(int argc, const char *argv[])
+{
 
-    clock_t t = clock(); // variable for keeping the time of the rendering
+	clock_t t = clock(); // variable for keeping the time of the rendering
 
-    int width = 1024; //width of the image
-    int height = 768; // height of the image
-    float fov = 90; // field of view
+	int width = 600;  // width of the image, actual width is 1024 pixels, we put 200 for testing, then 600 for the submission (ca. 5 minutes rendering time)
+	int height = 450; // height of the image, actual height is 768 pixels, we put 150 for testing, then 450 for the submission
+	float fov = 90;	  // field of view
 
 	sceneDefinition(); // Let's define a scene
 
-	Image image(width,height); // Create an image where we will store the result
-	vector<glm::vec3> image_values(width*height);
+	Image image(width, height); // Create an image where we will store the result
+	vector<glm::vec3> image_values(width * height);
 
-    float s = 2*tan(0.5*fov/180*M_PI)/width;
-    float X = -s * width / 2;
-    float Y = s * height / 2;
+	float s = 2 * tan(0.5 * fov / 180 * M_PI) / width;
+	float X = -s * width / 2;
+	float Y = s * height / 2;
 
-    for(int i = 0; i < width ; i++)
-        for(int j = 0; j < height ; j++){
+	for (int i = 0; i < width; i++)
+		for (int j = 0; j < height; j++)
+		{
 
-			float dx = X + i*s + s/2;
-            float dy = Y - j*s - s/2;
-            float dz = 1;
+			float dx = X + i * s + s / 2;
+			float dy = Y - j * s - s / 2;
+			float dz = 1;
 
 			glm::vec3 origin(0, 0, 0);
-            glm::vec3 direction(dx, dy, dz);
-            direction = glm::normalize(direction);
+			glm::vec3 direction(dx, dy, dz);
+			direction = glm::normalize(direction);
 
-            Ray ray(origin, direction);
-            image.setPixel(i, j, toneMapping(trace_ray(ray)));
-        }
-	
-    t = clock() - t;
-    cout<<"It took " << ((float)t)/CLOCKS_PER_SEC<< " seconds to render the image."<< endl;
-    cout<<"I could render at "<< (float)CLOCKS_PER_SEC/((float)t) << " frames per second."<<endl;
+			Ray ray(origin, direction);
+			image.setPixel(i, j, toneMapping(trace_ray(ray)));
+		}
+
+	t = clock() - t;
+	cout << "It took " << ((float)t) / CLOCKS_PER_SEC << " seconds to render the image." << endl;
+	cout << "I could render at " << (float)CLOCKS_PER_SEC / ((float)t) << " frames per second." << endl;
 
 	// Writing the final results of the rendering
-	if (argc == 2){
+	if (argc == 2)
+	{
 		image.writeImage(argv[1]);
-	}else{
+	}
+	else
+	{
 		image.writeImage("./result.ppm");
 	}
 
-	
-    return 0;
+	return 0;
 }
