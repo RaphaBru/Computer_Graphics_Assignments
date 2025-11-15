@@ -606,8 +606,8 @@ vector<Light *> lights; ///< A list of lights in the scene
 glm::vec3 ambient_light(0.001, 0.001, 0.001);
 vector<Object *> objects; ///< A list of all objects in the scene
 
-static const float EPSILON = 1e-4f; // offset to avoid self-intersection acne
-static const int MAX_DEPTH = 1;		// recursion limit for reflections
+static const float EPSILON = 1e-4f; // Assignment 4: offset to avoid self-intersection acne
+static const int MAX_DEPTH = 1;		// Assignment 4: recursion limit for reflections
 
 /** Function for computing color of an object according to the Phong Model
  @param point A point belonging to the object for which the color is computer
@@ -615,16 +615,25 @@ static const int MAX_DEPTH = 1;		// recursion limit for reflections
  @param view_direction A normalized direction from the point to the viewer/camera
  @param material A material structure representing the material of the object
 */
+
+// -------------------------
+// Assignment 4: Add shadows
+// -------------------------
+//
+// Check if an object is in a light source's shadow, by making a shadowRay, from the hit point toward the light source.
+// If the shadowRay hits another object before it reaches the light source, the point is in the shadow.
+// If that is the case, this light source's contribution (diffuse and specular) is ignored/skipped.
+// Otherwise: normal phong shading. Also, ambient light is not affected.
 glm::vec3 PhongModel(glm::vec3 point, glm::vec3 normal, glm::vec3 view_direction, Material material)
 {
 	glm::vec3 color(0.0f);
 
 	// for each light source
-	for (int light_num = 0; light_num < (int)lights.size(); ++light_num)
+	for (int light_num = 0; light_num < (int)lights.size(); light_num++)
 	{
 		// Direction to light
 		glm::vec3 Lvec = lights[light_num]->position - point; // vector from point to light
-		float Ldist = glm::length(Lvec);					  // distance to light
+		float Ldist = glm::length(Lvec);					  // distance to light --> needed for shadow computation
 		if (Ldist <= 0.0f)									  // if distance is zero or negative, skip this light
 			continue;
 		glm::vec3 L = Lvec / Ldist; // L is the normalized direction to light
@@ -661,7 +670,7 @@ glm::vec3 PhongModel(glm::vec3 point, glm::vec3 normal, glm::vec3 view_direction
 		glm::vec3 diffuse = material.diffuse * NdotL;
 		glm::vec3 specular = material.specular * powf(VdotR, material.shininess);
 
-		// simple distance attenuation like you had (1/r^2)
+		// distance attenuation
 		float r = glm::max(Ldist, 0.1f);
 		color += lights[light_num]->color * (diffuse + specular) / (r * r);
 	}
@@ -707,8 +716,20 @@ glm::vec3 trace_ray(const Ray &ray, int depth = 0)
 		viewDir,
 		mat);
 
-	// Stop if max depth or non-reflective
-	float kr = glm::clamp(mat.reflectivity, 0.0f, 1.0f);
+	// ------------------------
+	// Assignment 4: Reflection
+	// ------------------------
+	// General strategy: Hitting a reflective object creates a new ray in the reflection's direction, recursively, 
+	// until a non-reflective object is hit or recursion depth is reached.
+	//
+	// Ray starts with depth = 0, each recursively called reflection ray increments this variable.
+	// Reflection occurs if the object's material is reflective (Material.reflectivity > 0), otherwise the object's shading is returned.
+	// A reflection sends a new ray in the reflected direction, returning the color (refCol) of the object, that the reflection hits.
+	// As this is just another ray, the reflection ray would create another reflection ray if it hits a reflective object, creating a recursion.
+	// When the maximum recursion depth (MAX_DEPTH, global constant) is reached, or a non-reflective object is hit, the last object's shading is returned
+
+	float kr = glm::clamp(mat.reflectivity, 0.0f, 1.0f); // Reflection coefficient of Material, between (and including) 0 and 1, clamped to ensure interval
+	// if non-reflective material (reflectivity = 0) or maximum recursion depth (global constant) is reached, return the local shading
 	if (kr <= 0.0f || depth >= MAX_DEPTH)
 	{
 		return local;
@@ -719,11 +740,14 @@ glm::vec3 trace_ray(const Ray &ray, int depth = 0)
 	// Create reflected ray with origin slightly offset along normal to avoid self-intersection
 	Ray reflRay(closest_hit.intersection + closest_hit.normal * EPSILON, Rdir);
 	// we trace the reflected ray recursively
-	glm::vec3 reflCol = trace_ray(reflRay, depth + 1);
+	glm::vec3 reflCol = trace_ray(reflRay, depth + 1); // color of the object, that the reflection ray hits
 
 	// Mix reflection with local color because of reflectivity
+	// (1 - reflectivity) * local  <-- this is the object's own color. e.g. f kr==1, the object's own color would not contribute
+	// reflectivity * value of the reflection ray's result <-- reflection
 	return (1.0f - kr) * local + kr * reflCol;
 }
+
 /**
  Function defining the scene
  */
@@ -744,12 +768,15 @@ void sceneDefinition()
 	blue_specular.ambient = glm::vec3(0.7f, 0.7f, 1.0f);
 	blue_specular.diffuse = glm::vec3(0.7f, 0.7f, 1.0f);
 	blue_specular.specular = glm::vec3(0.6);
-	blue_specular.shininess = 50.0;
-	blue_specular.reflectivity = 0.75f;
+	blue_specular.shininess = 100.0;
+	blue_specular.reflectivity = 1.0f; // Assignment 4: added reflectivity to the reflective sphere's material
 
 	// spheres
 	objects.push_back(new Sphere(1.0, glm::vec3(1, -2, 8), blue_specular));
 	objects.push_back(new Sphere(0.5, glm::vec3(-1, -2.5, 6), red_specular));
+
+	// Assignment 4: Refraction Sphere
+	objects.push_back(new Sphere(2.0, glm::vec3(-3.0, -1.0, 8.0), red_specular));
 
 	// meshes
 	// auto *armadillo = new Mesh("meshes/armadillo_with_normals.obj", green_diffuse);
@@ -796,15 +823,16 @@ void sceneDefinition()
 	objects.push_back(new Plane(glm::vec3(-15, 1, 0), glm::vec3(1.0, 0.0, 0.0), red_diffuse));
 	objects.push_back(new Plane(glm::vec3(15, 1, 0), glm::vec3(-1.0, 0.0, 0.0), blue_diffuse));
 	objects.push_back(new Plane(glm::vec3(0, 27, 0), glm::vec3(0.0, -1, 0)));
-	objects.push_back(new Plane(glm::vec3(0, 1, -0.01), glm::vec3(0.0, 0.0, 1.0), green_diffuse));
+	// Assignment 4: It seems that for the scene in the project description PDF, the green wall behind the camera was removed...
+	// objects.push_back(new Plane(glm::vec3(0, 1, -0.01), glm::vec3(0.0, 0.0, 1.0), green_diffuse));
 
 	// Cones
 	Material yellow_specular;
 	yellow_specular.ambient = glm::vec3(0.1f, 0.10f, 0.0f);
 	yellow_specular.diffuse = glm::vec3(0.4f, 0.4f, 0.0f);
 	yellow_specular.specular = glm::vec3(1.0);
-	yellow_specular.shininess = 0.0;
-	yellow_specular.reflectivity = 0.9f;
+	yellow_specular.shininess = 100.0f;
+	// yellow_specular.reflectivity = 0.9f;
 
 	Cone *cone = new Cone(yellow_specular);
 	glm::mat4 translationMatrix = glm::translate(glm::vec3(5, 9, 14));
@@ -902,7 +930,7 @@ int main(int argc, const char *argv[])
 //   - Compute a shadow ray from the surface point toward the light
 //   - Offset the origin by normal * EPSILON to avoid self-shadowing
 //   - Check whether any object intersects that shadow ray before the light
-//     • If an object blocks the light → skip diffuse+specular for that light
+//     - If an object blocks the light --> skip diffuse+specular for that light
 //   - Otherwise compute:
 //       diffuse = kd * max(dot(N, L), 0)
 //       specular = ks * pow(dot(V, R), shininess)
