@@ -607,7 +607,8 @@ glm::vec3 ambient_light(0.001, 0.001, 0.001);
 vector<Object *> objects; ///< A list of all objects in the scene
 
 static const float EPSILON = 1e-4f; // Assignment 4: offset to avoid self-intersection acne
-static const int MAX_DEPTH = 1;		// Assignment 4: recursion limit for reflections
+static const int MAX_DEPTH = 3;		// Assignment 4: recursion limit for reflections
+static const float IOR_AIR = 1.0f;  // Assignment 4: index of refraction of air 
 
 /** Function for computing color of an object according to the Phong Model
  @param point A point belonging to the object for which the color is computer
@@ -728,24 +729,102 @@ glm::vec3 trace_ray(const Ray &ray, int depth = 0)
 	// As this is just another ray, the reflection ray would create another reflection ray if it hits a reflective object, creating a recursion.
 	// When the maximum recursion depth (MAX_DEPTH, global constant) is reached, or a non-reflective object is hit, the last object's shading is returned
 
-	float kr = glm::clamp(mat.reflectivity, 0.0f, 1.0f); // Reflection coefficient of Material, between (and including) 0 and 1, clamped to ensure interval
-	// if non-reflective material (reflectivity = 0) or maximum recursion depth (global constant) is reached, return the local shading
-	if (kr <= 0.0f || depth >= MAX_DEPTH)
+	// if maximum recursion depth is reached, return the local shading
+	if (depth >= MAX_DEPTH)
 	{
 		return local;
 	}
 
-	// Perfect mirror reflection
-	glm::vec3 Rdir = glm::normalize(glm::reflect(ray.direction, closest_hit.normal));
-	// Create reflected ray with origin slightly offset along normal to avoid self-intersection
-	Ray reflRay(closest_hit.intersection + closest_hit.normal * EPSILON, Rdir);
-	// we trace the reflected ray recursively
-	glm::vec3 reflCol = trace_ray(reflRay, depth + 1); // color of the object, that the reflection ray hits
+	float kr = glm::clamp(mat.reflectivity, 0.0f, 1.0f); // Reflection coefficient of Material, between (and including) 0 and 1, clamped to ensure interval
+	float kt = glm::clamp(mat.transparency, 0.0f, 1.0f); // Transparency coefficient of Material, between (and including) 0 and 1, clamped to ensure interval
 
-	// Mix reflection with local color because of reflectivity
-	// (1 - reflectivity) * local  <-- this is the object's own color. e.g. f kr==1, the object's own color would not contribute
-	// reflectivity * value of the reflection ray's result <-- reflection
-	return (1.0f - kr) * local + kr * reflCol;
+	// Material is neither reflective, nor transparent
+	if (kr <= 0.0f && kt <= 0.0f)
+	{
+		return local;
+	}
+	
+	if (kr > 0.0f)
+	{
+		// Perfect mirror reflection
+		glm::vec3 Rdir = glm::normalize(glm::reflect(ray.direction, closest_hit.normal));
+		// Create reflected ray with origin slightly offset along normal to avoid self-intersection
+		Ray reflRay(closest_hit.intersection + closest_hit.normal * EPSILON, Rdir);
+		// Trace the reflected ray recursively
+		glm::vec3 reflCol = trace_ray(reflRay, depth + 1); // color of the object, that the reflection ray hits
+
+		// Mix reflection with local color
+		return (1.0f - kr) * local + kr * reflCol;
+		// (1 - reflectivity) * local  <-- this is the object's own color. e.g. f kr==1, the object's own color would not contribute
+		// reflectivity * value of the reflection ray's result <-- reflection
+	}
+
+	if (kt > 0.0f)
+	{
+		// Refraction needs incident vector (ray direction) and normal vector
+		glm::vec3 I = glm::normalize(ray.direction); // incident vector
+		glm::vec3 N = closest_hit.normal; // normal vector
+
+		// Indices of refraction
+		float delta_1 = IOR_AIR; // index of refraction of air is clobal constant IOR_AIR
+		float ior_material = mat.refraction_index; // index of refraction of Material
+		float delta_2 = ior_material;
+
+		// Determine if the ray is hitting the object's surface from the outside or the inside
+		// Surface normal points outward
+		// When the ray is hitting from outside: I -->   <-- N | (Surface S)   cos(I, N) < 0 (base case)
+		// When the ray is hitting from inside:  I -->  S|S  N -->             cos(I, N) > 0 (invert N, swap delta_1 and delta_2)
+		float cosI = glm::dot(I, N);
+		if (cosI > 0.0f)
+		{
+			// We are inside
+			// Swap delta_1 and delta_2, flip N
+			delta_1 = ior_material;
+			delta_2 = IOR_AIR;
+			N = -N;
+			cosI = glm::dot(I, N);
+		}
+
+		// Compute refraction
+		float beta = delta_1 / delta_2;
+		glm::vec3 Tdir = glm::refract(I, N, beta);
+		if (glm::length(Tdir) > 0.0f)
+		{
+			Tdir = glm::normalize(Tdir);
+			// Offset origin slightly along refracted direction to avoid self-intersection
+			Ray refrRay(closest_hit.intersection + Tdir * EPSILON, Tdir);
+			glm::vec3 refrCol = trace_ray(refrRay, depth + 1);
+
+			return (1.0f - kt) * local + kt * refrCol;
+		}
+	}
+
+	return local;
+
+
+
+	// float kr = glm::clamp(mat.reflectivity, 0.0f, 1.0f); // Reflection coefficient of Material, between (and including) 0 and 1, clamped to ensure interval
+	// // if non-reflective material (reflectivity = 0) or maximum recursion depth (global constant) is reached, return the local shading
+	// if (kr <= 0.0f || depth >= MAX_DEPTH)
+	// {
+	// 	return local;
+	// }
+
+	// // Perfect mirror reflection
+	// glm::vec3 Rdir = glm::normalize(glm::reflect(ray.direction, closest_hit.normal));
+	// // Create reflected ray with origin slightly offset along normal to avoid self-intersection
+	// Ray reflRay(closest_hit.intersection + closest_hit.normal * EPSILON, Rdir);
+	// // we trace the reflected ray recursively
+	// glm::vec3 reflCol = trace_ray(reflRay, depth + 1); // color of the object, that the reflection ray hits
+
+	// // Mix reflection with local color
+	// // (1 - reflectivity) * local  <-- this is the object's own color. e.g. f kr==1, the object's own color would not contribute
+	// // reflectivity * value of the reflection ray's result <-- reflection
+	// return (1.0f - kr) * local + kr * reflCol;
+
+	// float kt = glm::clamp(mat.transparency, 0.0f, 1.0f); // Transparency coefficient of Material, between (and including) 0 and 1, clamped to ensure interval
+	// float ior_material = mat.refraction_index; // index of refraction of Material
+
 }
 
 /**
@@ -768,7 +847,7 @@ void sceneDefinition()
 	blue_specular.ambient = glm::vec3(0.7f, 0.7f, 1.0f);
 	blue_specular.diffuse = glm::vec3(0.7f, 0.7f, 1.0f);
 	blue_specular.specular = glm::vec3(0.6);
-	blue_specular.shininess = 100.0;
+	blue_specular.shininess = 100.0f;
 	blue_specular.reflectivity = 1.0f; // Assignment 4: added reflectivity to the reflective sphere's material
 
 	// spheres
@@ -776,7 +855,17 @@ void sceneDefinition()
 	objects.push_back(new Sphere(0.5, glm::vec3(-1, -2.5, 6), red_specular));
 
 	// Assignment 4: Refraction Sphere
-	objects.push_back(new Sphere(2.0, glm::vec3(-3.0, -1.0, 8.0), red_specular));
+	// Material
+	Material glass;
+	glass.ambient = glm::vec3(0.0f);
+	glass.diffuse = glm::vec3(0.0f);
+	glass.specular = glm::vec3(1.0f);
+	glass.shininess = 100.0f;
+	glass.reflectivity = 0.0f;
+	glass.transparency = 0.9f;
+	glass.refraction_index = 2.0f;
+	// Creating the refraction sphere
+	objects.push_back(new Sphere(2.0, glm::vec3(-3.0, -1.0, 8.0), glass));
 
 	// meshes
 	// auto *armadillo = new Mesh("meshes/armadillo_with_normals.obj", green_diffuse);

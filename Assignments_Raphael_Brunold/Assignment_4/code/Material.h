@@ -19,7 +19,9 @@ struct Material
     glm::vec3 diffuse = glm::vec3(1.0);
     glm::vec3 specular = glm::vec3(0.0);
     float shininess = 0.0;
-    float reflectivity{0.0f};
+    float reflectivity{0.0f}; // Assignment 4
+    float transparency{0.0f}; // Assignment 4
+    float refraction_index{1.0f}; // Assignment 4
 };
 
 #endif /* Material_h */
