@@ -607,7 +607,7 @@ glm::vec3 ambient_light(0.001, 0.001, 0.001);
 vector<Object *> objects; ///< A list of all objects in the scene
 
 static const float EPSILON = 1e-4f; // Assignment 4: offset to avoid self-intersection acne
-static const int MAX_DEPTH = 3;		// Assignment 4: recursion limit for reflections
+static const int MAX_DEPTH = 6;		// Assignment 4: recursion limit for reflections
 static const float IOR_AIR = 1.0f;  // Assignment 4: index of refraction of air 
 
 /** Function for computing color of an object according to the Phong Model
@@ -717,17 +717,63 @@ glm::vec3 trace_ray(const Ray &ray, int depth = 0)
 		viewDir,
 		mat);
 
-	// ------------------------
-	// Assignment 4: Reflection
-	// ------------------------
-	// General strategy: Hitting a reflective object creates a new ray in the reflection's direction, recursively, 
-	// until a non-reflective object is hit or recursion depth is reached.
+	// -------------------------------------
+	// Assignment 4: Reflection & Refraction
+	// -------------------------------------
 	//
-	// Ray starts with depth = 0, each recursively called reflection ray increments this variable.
-	// Reflection occurs if the object's material is reflective (Material.reflectivity > 0), otherwise the object's shading is returned.
-	// A reflection sends a new ray in the reflected direction, returning the color (refCol) of the object, that the reflection hits.
-	// As this is just another ray, the reflection ray would create another reflection ray if it hits a reflective object, creating a recursion.
-	// When the maximum recursion depth (MAX_DEPTH, global constant) is reached, or a non-reflective object is hit, the last object's shading is returned
+	// Reflection:
+	// -----------
+	// General strategy: Hitting a reflective object creates a new ray in the
+	// reflection direction, recursively, until either a non-reflective object
+	// is hit or the recursion depth limit is reached.
+	//
+	// The primary camera ray starts with depth = 0. Each secondary ray
+	// (reflection / refraction) is traced with depth + 1.
+	// Reflection occurs if the material is reflective (Material.reflectivity > 0).
+	// For such objects, we:
+	//   - compute the mirror reflection direction with glm::reflect()
+	//   - spawn a new ray from (hitPoint + normal * EPSILON) to avoid self-intersection
+	//   - trace that ray recursively with trace_ray(..., depth + 1)
+	//   - blend the local shading and reflection using reflectivity as a weight
+	//
+	// When MAX_DEPTH (a global constant) is reached, or we hit a non-reflective object,
+	// we stop and just return the local Phong shading.
+	//
+	// Refraction:
+	// -----------
+	// Refraction occurs if the material is transparent (Material.transparency > 0).
+	//
+	// Base case (Exercise 3):
+	//   - Only refraction is used, no Fresnel effect, no reflection contribution.
+	//
+	// Fresnel effect (Exercise 4):
+	//   - We compute the Fresnel term F_R at the surface point,
+	//     which gives the weight of reflection. F_T, 
+	//     the weight of the refraction is F_T = 1 - F_R.
+	//   - We then spawn both a refraction ray and a reflection ray and combine
+	//     their colors as:  F_R * reflection + F_T * refraction.
+	//
+	// Special case: Total Internal Reflection (TIR)
+	//   - For certain incident angles when going from a higher index of refraction (IOR) to a lower IOR,
+	//     Snell’s law has no real solution and the refracted direction does not exist.
+	//   - In this case glm::refract(...) returns a zero vector. We detect that and
+	//     treat it as F_R = 1, F_T = 0 → pure reflection, no refraction ray.
+	//
+	// Overall recursion:
+	// ------------------
+	// When a ray hits a transparent object (kt > 0), we:
+	//   - compute the refracted direction (if any) and the reflected direction
+	//   - trace refraction and reflection rays recursively
+	//   - stop when MAX_DEPTH is reached, or when a hit material is neither
+	//     reflective nor transparent → we just return its local Phong shading.
+	//
+	// Visual observation:
+	// -------------------
+	// In the final render, the reflective sphere on the right is visible inside
+	// the refractive sphere on the left. In that region you can see multiple
+	// “bounces” of reflection and refraction between the two spheres, which
+	// nicely demonstrates the recursion of secondary rays.
+
 
 	// if maximum recursion depth is reached, return the local shading
 	if (depth >= MAX_DEPTH)
@@ -744,7 +790,7 @@ glm::vec3 trace_ray(const Ray &ray, int depth = 0)
 		return local;
 	}
 	
-	if (kr > 0.0f)
+	if (kr > 0.0f && kt == 0.0f)
 	{
 		// Perfect mirror reflection
 		glm::vec3 Rdir = glm::normalize(glm::reflect(ray.direction, closest_hit.normal));
@@ -766,67 +812,76 @@ glm::vec3 trace_ray(const Ray &ray, int depth = 0)
 		glm::vec3 N = closest_hit.normal; // normal vector, points outward from the surface
 
 		// Indices of refraction
-		float delta_1 = IOR_AIR; // index of refraction of air is global constant IOR_AIR
+		float delta1 = IOR_AIR; // index of refraction of air is global constant IOR_AIR
 		float ior_material = mat.refraction_index; // index of refraction of Material
-		float delta_2 = ior_material;
+		float delta2 = ior_material;
 
 		// Determine if the ray is hitting the object's surface from the outside or the inside
 		// Surface normal points outward
 		// When the ray is hitting from outside: I -->   <-- N | (Surface S)   cos(I, N) < 0 (base case)
 		// When the ray is hitting from inside:  I -->  S|S  N -->             cos(I, N) > 0 (invert N, swap delta_1 and delta_2)
-		float cosI = glm::dot(I, N);
-		if (cosI > 0.0f)
+		if (glm::dot(I, N) > 0.0f)
 		{
 			// We are inside
 			// Swap delta_1 and delta_2, flip N
-			delta_1 = ior_material;
-			delta_2 = IOR_AIR;
+			delta1 = ior_material;
+			delta2 = IOR_AIR;
 			N = -N;
-			cosI = glm::dot(I, N);
 		}
 
 		// Compute refraction
-		float beta = delta_1 / delta_2; // ratio of indices of refraction
-		glm::vec3 Tdir = glm::refract(I, N, beta); // refract
+		float beta = delta1 / delta2; // ratio of indices of refraction
+		glm::vec3 Tdir = glm::refract(I, N, beta); // refraction direction
 
-		// Total internal reflection (TIR): At wider angles, light is not refracted, but internally reflected
-		// In that case, Tdir is (0, 0, 0), so ||Tdir|| = 0
-		if (glm::length(Tdir) > 0.0f) // no TIR
+		// Fresnel effect: introduce weights for refraction and reflection
+		float fr; // weight of reflection
+		float ft; // weight of refraction
+
+		glm::vec3 refrCol(0.0f);
+
+		// Special case: Total internal reflection (TIR)
+		// At wider angles, light is not refracted, and only internally reflected
+		// That is the case when the computed Tdir is (0, 0, 0), so ||Tdir|| == 0
+		if (glm::dot(Tdir, Tdir) < 1e-6f)
 		{
-			Tdir = glm::normalize(Tdir); // normalize
+			fr = 1.0f; // only reflection
+			ft = 0.0f; // no refraction
+		}
+
+		// Base case for refraction, no TIR
+		else
+		{
+			Tdir = glm::normalize(Tdir); // normalize refraction direction
+
+			// Fresnel effect
+			float cosTheta1 = glm::dot(-I, N); // cosine of angle between incident vector and the normal (flip I, so I and N both point away from the surface)
+			float cosTheta2 = glm::dot(Tdir, -N); // cosine of the angle between the refraction vector and the normal (flip N, so both point away from the surface)
+			float left_fresnel_fraction = (delta1 * cosTheta1 - delta2 * cosTheta2) / (delta1 * cosTheta1 + delta2 * cosTheta2);
+			float right_fresnel_fraction = (delta1 * cosTheta2 - delta2 * cosTheta1) / (delta1 * cosTheta2 + delta2 * cosTheta1);
+			fr = 0.5 * ((left_fresnel_fraction * left_fresnel_fraction) + (right_fresnel_fraction * right_fresnel_fraction));
+			fr = glm::clamp(fr, 0.0f, 1.0f); // clamp to ensure fr stays within interval [0, 1] (could fall outside because of numerical errors)
+			ft = 1.0f - fr;
+
+			// Refraction ray
 			// Offset origin slightly along refracted direction to avoid self-intersection
 			Ray refrRay(closest_hit.intersection + Tdir * EPSILON, Tdir); // new refraction ray
-			glm::vec3 refrCol = trace_ray(refrRay, depth + 1); // trace refraction ray to obtain color
-
-			return (1.0f - kt) * local + kt * refrCol;
+			refrCol = trace_ray(refrRay, depth + 1); // trace refraction ray to obtain color
 		}
+
+		// Reflection (same as above)
+		glm::vec3 Rdir = glm::normalize(glm::reflect(ray.direction, closest_hit.normal));
+		Ray reflRay(closest_hit.intersection + closest_hit.normal * EPSILON, Rdir);
+		glm::vec3 reflCol = trace_ray(reflRay, depth + 1);
+
+		// Combine reflection and refraction color
+		glm::vec3 combined = (1.0f - kt) * local + kt * (fr * reflCol + ft * refrCol);
+
+		return combined;
+
 	}
 
+	// Fallback, should be unreachable for valid materials
 	return local;
-
-
-
-	// float kr = glm::clamp(mat.reflectivity, 0.0f, 1.0f); // Reflection coefficient of Material, between (and including) 0 and 1, clamped to ensure interval
-	// // if non-reflective material (reflectivity = 0) or maximum recursion depth (global constant) is reached, return the local shading
-	// if (kr <= 0.0f || depth >= MAX_DEPTH)
-	// {
-	// 	return local;
-	// }
-
-	// // Perfect mirror reflection
-	// glm::vec3 Rdir = glm::normalize(glm::reflect(ray.direction, closest_hit.normal));
-	// // Create reflected ray with origin slightly offset along normal to avoid self-intersection
-	// Ray reflRay(closest_hit.intersection + closest_hit.normal * EPSILON, Rdir);
-	// // we trace the reflected ray recursively
-	// glm::vec3 reflCol = trace_ray(reflRay, depth + 1); // color of the object, that the reflection ray hits
-
-	// // Mix reflection with local color
-	// // (1 - reflectivity) * local  <-- this is the object's own color. e.g. f kr==1, the object's own color would not contribute
-	// // reflectivity * value of the reflection ray's result <-- reflection
-	// return (1.0f - kr) * local + kr * reflCol;
-
-	// float kt = glm::clamp(mat.transparency, 0.0f, 1.0f); // Transparency coefficient of Material, between (and including) 0 and 1, clamped to ensure interval
-	// float ior_material = mat.refraction_index; // index of refraction of Material
 
 }
 
@@ -856,6 +911,7 @@ void sceneDefinition()
 	// spheres
 	objects.push_back(new Sphere(1.0, glm::vec3(1, -2, 8), blue_specular));
 	objects.push_back(new Sphere(0.5, glm::vec3(-1, -2.5, 6), red_specular));
+	// objects.push_back(new Sphere(2.5, glm::vec3(-3.0, -1.0, 15.0), red_specular)); // Assignment 4: testing the refraction by placing a red sphere behind the refraction sphere
 
 	// Assignment 4: Refraction Sphere
 	// Material
@@ -872,30 +928,24 @@ void sceneDefinition()
 
 	// meshes
 	// auto *armadillo = new Mesh("meshes/armadillo_with_normals.obj", green_diffuse);
-
 	// glm::mat4 S = glm::scale(glm::vec3(1.5f));
 	// glm::mat4 R = glm::mat4(1.0f);
 	// glm::mat4 T = glm::translate(glm::vec3(-5.0f, -3.0f, 10.0f));
 	// armadillo->setTransformation(T * R * S);
-
 	// objects.push_back(armadillo);
 
 	// auto *bunny = new Mesh("meshes/bunny_with_normals.obj", green_diffuse);
-
 	// S = glm::scale(glm::vec3(1.5f));
 	// R = glm::mat4(1.0f);
 	// T = glm::translate(glm::vec3(0.0f, -3.0f, 10.0f));
 	// bunny->setTransformation(T * R * S);
-
 	// objects.push_back(bunny);
 
 	// auto *lucy = new Mesh("meshes/lucy_with_normals.obj", green_diffuse);
-
 	// S = glm::scale(glm::vec3(1.5f));
 	// R = glm::mat4(1.0f);
 	// T = glm::translate(glm::vec3(5.0f, -3.0f, 10.0f));
 	// lucy->setTransformation(T * R * S);
-
 	// objects.push_back(lucy);
 
 	// lights
@@ -916,7 +966,7 @@ void sceneDefinition()
 	objects.push_back(new Plane(glm::vec3(15, 1, 0), glm::vec3(-1.0, 0.0, 0.0), blue_diffuse));
 	objects.push_back(new Plane(glm::vec3(0, 27, 0), glm::vec3(0.0, -1, 0)));
 	// Assignment 4: It seems that for the scene in the project description PDF, the green wall behind the camera was removed...
-	// objects.push_back(new Plane(glm::vec3(0, 1, -0.01), glm::vec3(0.0, 0.0, 1.0), green_diffuse));
+	// objects.push_back(new Plane(glm::vec3(0, 1, -0.01), glm::vec3(0.0, 0.0, 1.0), green_diffuse)); // removed to match project description's output
 
 	// Cones
 	Material yellow_specular;
@@ -951,8 +1001,8 @@ int main(int argc, const char *argv[])
 
 	clock_t t = clock(); // variable for keeping the time of the rendering
 
-	int width = 1024; // width of the image, actual width is 1024 pixels, we put 200 for testing
-	int height = 768; // height of the image, actual height is 768 pixels, we put 150 for testing
+	int width = 1024; // width of the image, actual width is 1024 pixels, we put 200 for mesh testing
+	int height = 768; // height of the image, actual height is 768 pixels, we put 150 for mesh testing
 	float fov = 90;	  // field of view
 
 	sceneDefinition(); // Let's define a scene
@@ -996,56 +1046,3 @@ int main(int argc, const char *argv[])
 
 	return 0;
 }
-// Hey Rafa here is the documentation for the added features:
-// ================================================================
-// Secondary Effects Added (Shadows + Reflections)
-// ================================================================
-//
-// Overall:
-// --------
-// Added support for two core ray-tracing effects:
-//   1) Shadows -> points only receive light if visible to the light
-//   2) Reflections -> reflective materials spawn secondary reflection rays
-//
-// Introduced two global constants:
-//   EPSILON   -> small offset to avoid self-intersection (“acne”)
-//   MAX_DEPTH -> recursion limit for reflections
-//
-// Material was extended with:
-//   float reflectivity;  // 0 = no reflection, 1 = perfect mirror
-//
-// =================================================================
-// PhongModel() — Shadow Rays
-// =================================================================
-//
-// For every light, we now:
-//   - Compute a shadow ray from the surface point toward the light
-//   - Offset the origin by normal * EPSILON to avoid self-shadowing
-//   - Check whether any object intersects that shadow ray before the light
-//     - If an object blocks the light --> skip diffuse+specular for that light
-//   - Otherwise compute:
-//       diffuse = kd * max(dot(N, L), 0)
-//       specular = ks * pow(dot(V, R), shininess)
-//   - Still apply ambient term as before (ambient light is not shadowed)
-//
-// Result: Proper hard shadows cast by all opaque objects.
-//
-// =================================================================
-// trace_ray() — Recursive Perfect Reflections
-// =================================================================
-//
-// trace_ray now takes an additional parameter: recursion depth.
-// The logic is:
-//   1) Find closest object hit (unchanged)
-//   2) Compute local lighting using PhongModel (unchanged)
-//   3) If material.reflectivity == 0, return local shading
-//   4) Otherwise:
-//        - Compute reflection direction using glm::reflect()
-//        - Spawn a new ray from (point + normal * EPSILON)
-//        - Recursively call trace_ray(reflRay, depth + 1)
-//        - Mix local+reflection via:
-//            color = (1 - kr) * local + kr * reflection
-//   5) Prevent infinite recursion via MAX_DEPTH
-//
-// Result: Objects with reflectivity > 0 act as mirrors.
-// ================================================================
