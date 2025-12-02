@@ -12,7 +12,7 @@ This is the repository for the Course ***Computer Graphics***, Fall Semester 202
 - **Exercise 2:** Multiple objects
 - **Exercise 3:** Phong lighting model
 
-**Results:**
+#### Results:
 Exercise 1   | Exercise 2  | Exercise 3
 :-----------:|:-----------:|:-----------:
 ![](Assignments_Raphael_Brunold/Assignment_1/result1.png) | ![](Assignments_Raphael_Brunold/Assignment_1/result_test.png) | ![](Assignments_Raphael_Brunold/Assignment_1/result3.png)
@@ -25,7 +25,7 @@ Exercise 1   | Exercise 2  | Exercise 3
 - **Exercise 2:** Cones
 - **Exercise 3:** Improved lighting - Attenuation and Tone Mapping
 
-**Results:** 
+#### Results:
 Exercise 1   | Exercise 2  | Exercise 3
 :-----------:|:-----------:|:-----------:
 ![](Assignments_Raphael_Brunold/Assignment_2/result1.png) | ![](Assignments_Raphael_Brunold/Assignment_2/result2.png) | ![](Assignments_Raphael_Brunold/Assignment_2/result3.png)
@@ -38,7 +38,7 @@ Exercise 1   | Exercise 2  | Exercise 3
 - **Exercise 2:** Smoothing
 - **Exercise 3 (Bonus):** Design own mesh in Blender and display it
 
-**Result:**
+#### Result:
 Meshes, Smooth Shading, Custom Mesh|
 :-------:
 ![Assignment 3 Final Output](Assignments_Raphael_Brunold/Assignment_3/result_final.png)
@@ -52,7 +52,7 @@ Meshes, Smooth Shading, Custom Mesh|
 - **Exercise 3:** Refractions
 - **Exercise 4:** Fresnel Effect
 
-**Result:**
+#### Result:
 Shadows, Reflections, Refractions, Fresnel Effect|
 :-------:
 ![Assignment 4 Final Output](Assignments_Raphael_Brunold/Assignment_4/result.png)
