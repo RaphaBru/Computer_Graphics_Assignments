@@ -7,34 +7,52 @@ This is the repository for the Course ***Computer Graphics***, Fall Semester 202
 -------
 
 ## Assignment 1
-**Spheres with Phong lighting model**<br>
-Exercise 1: One object (sphere)<br>
-Exercise 2: Multiple objects<br>
-Exercise 3: Phong lighting model<br>
+### Spheres with Phong lighting model
+- **Exercise 1:** One object (sphere)
+- **Exercise 2:** Multiple objects
+- **Exercise 3:** Phong lighting model
 
-**Desired output:**
-![Assignment 1 Desired Output](Original_Code_Backup/Assignment_1/handout_picture.png)
+**Results:**
+Exercise 1   | Exercise 2  | Exercise 3
+:-----------:|:-----------:|:-----------:
+![](Assignments_Raphael_Brunold/Assignment_1/result1.png) | ![](Assignments_Raphael_Brunold/Assignment_1/result_test.png) | ![](Assignments_Raphael_Brunold/Assignment_1/result3.png)
 
 -------
 
 ## Assignment 2
-**Transformations & Tone Mapping**<br>
-Exercise 1: Planes<br>
-Exercise 2: Cones<br>
-Exercise 3: Improved lighting<br>
+### Transformations & Tone Mapping
+- **Exercise 1:** Planes
+- **Exercise 2:** Cones
+- **Exercise 3:** Improved lighting - Attenuation and Tone Mapping
 
-**Desired output:**
-![Assignment 2 Desired Output](Original_Code_Backup/Assignment_2/handout_picture.png)
+**Results:** 
+Exercise 1   | Exercise 2  | Exercise 3
+:-----------:|:-----------:|:-----------:
+![](Assignments_Raphael_Brunold/Assignment_2/result1.png) | ![](Assignments_Raphael_Brunold/Assignment_2/result2.png) | ![](Assignments_Raphael_Brunold/Assignment_2/result3.png)
 
 -------
 
 ## Assignment 3
-**Meshes**<br>
-Exercise 1: Triangles, OBJ file parsing<br>
-Exercise 2: Smoothing<br>
-Bonus Exercise 3: Design own mesh in Blender and display it<br>
+### Meshes
+- **Exercise 1:** Triangles, OBJ file parsing
+- **Exercise 2:** Smoothing
+- **Exercise 3 (Bonus):** Design own mesh in Blender and display it
 
-**Final output:**<br>
+**Result:**
+Meshes, Smooth Shading, Custom Mesh|
+:-------:
 ![Assignment 3 Final Output](Assignments_Raphael_Brunold/Assignment_3/result_final.png)
 
 -------
+
+## Assignment 4
+### Shadows, Reflection, and Refraction
+- **Exercise 1:** Add shadows to Phong Lighting
+- **Exercise 2:** Reflections
+- **Exercise 3:** Refractions
+- **Exercise 4:** Fresnel Effect
+
+**Result:**
+Shadows, Reflections, Refractions, Fresnel Effect|
+:-------:
+![Assignment 4 Final Output](Assignments_Raphael_Brunold/Assignment_4/result.png)
