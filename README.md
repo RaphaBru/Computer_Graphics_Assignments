@@ -23,7 +23,7 @@ Exercise 1   | Exercise 2  | Exercise 3
 ### Transformations & Tone Mapping
 - **Exercise 1:** Planes
 - **Exercise 2:** Cones
-- **Exercise 3:** Improved lighting - Distance Attenuation, Tone Mapping and Gamma Correction
+- **Exercise 3:** Improved lighting - Distance attenuation, tone mapping and gamma correction
 
 #### Results:
 Exercise 1   | Exercise 2  | Exercise 3
@@ -34,7 +34,7 @@ Exercise 1   | Exercise 2  | Exercise 3
 
 ## Assignment 3
 ### Meshes
-- **Exercise 1:** Triangles, OBJ file parsing
+- **Exercise 1:** Triangles, OBJ file parsing (loading meshes from files)
 - **Exercise 2:** Smoothing
 - **Exercise 3 (Bonus):** Design own mesh in Blender and display it
 
