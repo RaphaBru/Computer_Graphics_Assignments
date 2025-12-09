@@ -23,7 +23,7 @@ Exercise 1   | Exercise 2  | Exercise 3
 ### Transformations & Tone Mapping
 - **Exercise 1:** Planes
 - **Exercise 2:** Cones
-- **Exercise 3:** Improved lighting - Attenuation and Tone Mapping
+- **Exercise 3:** Improved lighting - Distance Attenuation, Tone Mapping and Gamma Correction
 
 #### Results:
 Exercise 1   | Exercise 2  | Exercise 3
