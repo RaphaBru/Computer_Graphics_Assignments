@@ -606,7 +606,7 @@ vector<Light *> lights; ///< A list of lights in the scene
 glm::vec3 ambient_light(0.001, 0.001, 0.001);
 vector<Object *> objects; ///< A list of all objects in the scene
 
-static const float EPSILON = 1e-4f; // Assignment 4: offset to avoid self-intersection acne
+static const float EPSILON = 1e-3f; // Assignment 4: offset to avoid self-intersection acne
 static const int MAX_DEPTH = 6;		// Assignment 4: recursion limit for reflections
 static const float IOR_AIR = 1.0f;  // Assignment 4: index of refraction of air 
 
