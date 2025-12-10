@@ -55,4 +55,4 @@ Meshes, Smooth Shading, Custom Mesh|
 #### Result:
 Shadows, Reflections, Refractions, Fresnel Effect|
 :-------:
-![Assignment 4 Final Output](Assignments_Raphael_Brunold/Assignment_4/result_updated.png)
+![Assignment 4 Final Output](Assignments_Raphael_Brunold/Assignment_4/result_hd.png)

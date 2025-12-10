@@ -606,7 +606,7 @@ vector<Light *> lights; ///< A list of lights in the scene
 glm::vec3 ambient_light(0.001, 0.001, 0.001);
 vector<Object *> objects; ///< A list of all objects in the scene
 
-static const float EPSILON = 2 * 1e-2f; // Assignment 4: offset to avoid self-intersection acne
+static const float EPSILON = 1e-2f; // Assignment 4: offset to avoid self-intersection acne
 static const int MAX_DEPTH = 6;		// Assignment 4: recursion limit for reflections
 static const float IOR_AIR = 1.0f;  // Assignment 4: index of refraction of air 
 
@@ -1001,8 +1001,8 @@ int main(int argc, const char *argv[])
 
 	clock_t t = clock(); // variable for keeping the time of the rendering
 
-	int width = 1024; // width of the image, actual width is 1024 pixels, we put 200 for mesh testing
-	int height = 768; // height of the image, actual height is 768 pixels, we put 150 for mesh testing
+	int width = 1024; // width of the image, actual width is 1024 pixels, we put 200 for mesh testing (2048 for detailed resolution)
+	int height = 768; // height of the image, actual height is 768 pixels, we put 150 for mesh testing (1536 for detailed resolution)
 	float fov = 90;	  // field of view
 
 	sceneDefinition(); // Let's define a scene
